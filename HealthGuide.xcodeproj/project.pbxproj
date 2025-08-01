@@ -29,9 +29,22 @@
 		E4CBA0DE2E334C7600B05A42 /* HealthGuideUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HealthGuideUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E4CBA0F42E3353B900B05A42 /* Exceptions for "HealthGuide" folder in "HealthGuide" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E4CBA0C12E334C7500B05A42 /* HealthGuide */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E4CBA0C42E334C7500B05A42 /* HealthGuide */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E4CBA0F42E3353B900B05A42 /* Exceptions for "HealthGuide" folder in "HealthGuide" target */,
+			);
 			path = HealthGuide;
 			sourceTree = "<group>";
 		};
@@ -329,6 +342,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -384,6 +398,7 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -393,24 +408,41 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = HealthGuide/HealthGuide.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X9DBV6C952;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HealthGuide/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Careguide;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "HealthGuide uses the camera to scan medication barcodes and capture prescription information.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "HealthGuide accesses contacts to help you share health information with family members and caregivers.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "HealthGuide uses Face ID to secure your health information and provide quick access to your medication schedule.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to read your health data for medication tracking";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs to save your medication and diet information";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "HealthGuide needs access to your photos to save and retrieve medication images and prescriptions.";
+				INFOPLIST_KEY_NSSiriUsageDescription = "Use Siri to check medications, log doses, and get reminders about your health schedule.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arm64;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.medicationmanager.HealthGuide;
+				NEW_SETTING = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.qashsolutions.HealthGuide;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -420,24 +452,41 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = HealthGuide/HealthGuide.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X9DBV6C952;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HealthGuide/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Careguide;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "HealthGuide uses the camera to scan medication barcodes and capture prescription information.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "HealthGuide accesses contacts to help you share health information with family members and caregivers.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "HealthGuide uses Face ID to secure your health information and provide quick access to your medication schedule.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to read your health data for medication tracking";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs to save your medication and diet information";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "HealthGuide needs access to your photos to save and retrieve medication images and prescriptions.";
+				INFOPLIST_KEY_NSSiriUsageDescription = "Use Siri to check medications, log doses, and get reminders about your health schedule.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arm64;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.medicationmanager.HealthGuide;
+				NEW_SETTING = "";
+				PRODUCT_BUNDLE_IDENTIFIER = com.qashsolutions.HealthGuide;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

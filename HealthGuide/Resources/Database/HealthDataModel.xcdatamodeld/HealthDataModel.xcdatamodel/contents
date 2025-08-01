@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23788.4" systemVersion="24F74" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="YES" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <entity name="CareGroupEntity" representedClassName="CareGroupEntity" syncable="YES">
+        <attribute name="adminUserID" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="inviteCode" optional="YES" attributeType="String"/>
+        <attribute name="inviteCodeExpiry" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" optional="YES" attributeType="String" spotlightIndexingEnabled="YES"/>
+        <attribute name="settings" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSDictionary"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="members" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="GroupMemberEntity" inverseName="group" inverseEntity="GroupMemberEntity"/>
+    </entity>
+    <entity name="ConflictEntity" representedClassName="ConflictEntity" syncable="YES">
+        <attribute name="checkedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="checkedBy" optional="YES" attributeType="String"/>
+        <attribute name="conflictDescription" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="medicationA" optional="YES" attributeType="String"/>
+        <attribute name="medicationB" optional="YES" attributeType="String"/>
+        <attribute name="recommendation" optional="YES" attributeType="String"/>
+        <attribute name="severity" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="ContactEntity" representedClassName="ContactEntity" syncable="YES">
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="isPrimary" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="name" optional="YES" attributeType="String" spotlightIndexingEnabled="YES"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="phone" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="DietEntity" representedClassName="DietEntity" syncable="YES">
+        <attribute name="calories" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isActive" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="mealType" optional="YES" attributeType="String"/>
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="portion" optional="YES" attributeType="String" defaultValueString="1 serving"/>
+        <attribute name="restrictions" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSArray"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="doses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DoseEntity" inverseName="diet" inverseEntity="DoseEntity"/>
+        <relationship name="schedule" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="ScheduleEntity" inverseName="diet" inverseEntity="ScheduleEntity"/>
+    </entity>
+    <entity name="DoseEntity" representedClassName="DoseEntity" syncable="YES">
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isTaken" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="period" optional="YES" attributeType="String"/>
+        <attribute name="scheduledTime" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="takenAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="diet" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="DietEntity" inverseName="doses" inverseEntity="DietEntity"/>
+        <relationship name="medication" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="MedicationEntity" inverseName="doses" inverseEntity="MedicationEntity"/>
+        <relationship name="supplement" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SupplementEntity" inverseName="doses" inverseEntity="SupplementEntity"/>
+    </entity>
+    <entity name="GroupMemberEntity" representedClassName="GroupMemberEntity" syncable="YES">
+        <attribute name="email" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="joinedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastActiveAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" optional="YES" attributeType="String" spotlightIndexingEnabled="YES"/>
+        <attribute name="permissions" optional="YES" attributeType="String"/>
+        <attribute name="phoneNumber" optional="YES" attributeType="String"/>
+        <attribute name="profileColor" optional="YES" attributeType="String"/>
+        <attribute name="role" optional="YES" attributeType="String"/>
+        <attribute name="userID" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <relationship name="group" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CareGroupEntity" inverseName="members" inverseEntity="CareGroupEntity"/>
+    </entity>
+    <entity name="MedicationEntity" representedClassName="MedicationEntity" syncable="YES">
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dosage" optional="YES" attributeType="String"/>
+        <attribute name="expirationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isActive" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="prescribedBy" optional="YES" attributeType="String"/>
+        <attribute name="prescriptionNumber" optional="YES" attributeType="String"/>
+        <attribute name="quantity" optional="YES" attributeType="Integer 32" defaultValueString="1" usesScalarValueType="YES"/>
+        <attribute name="refillsRemaining" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="unit" optional="YES" attributeType="String"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="doses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DoseEntity" inverseName="medication" inverseEntity="DoseEntity"/>
+        <relationship name="schedule" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="ScheduleEntity" inverseName="medication" inverseEntity="ScheduleEntity"/>
+    </entity>
+    <entity name="ScheduleEntity" representedClassName="ScheduleEntity" syncable="YES">
+        <attribute name="activeDays" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSArray"/>
+        <attribute name="customTimes" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSArray"/>
+        <attribute name="endDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="frequency" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="startDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="timePeriods" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSArray"/>
+        <relationship name="diet" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="DietEntity" inverseName="schedule" inverseEntity="DietEntity"/>
+        <relationship name="medication" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="MedicationEntity" inverseName="schedule" inverseEntity="MedicationEntity"/>
+        <relationship name="supplement" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SupplementEntity" inverseName="schedule" inverseEntity="SupplementEntity"/>
+    </entity>
+    <entity name="SupplementEntity" representedClassName="SupplementEntity" syncable="YES">
+        <attribute name="brand" optional="YES" attributeType="String"/>
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dosage" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="interactions" optional="YES" attributeType="String"/>
+        <attribute name="isActive" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="name" optional="YES" attributeType="String" spotlightIndexingEnabled="YES"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="purpose" optional="YES" attributeType="String"/>
+        <attribute name="quantity" optional="YES" attributeType="Integer 32" defaultValueString="1" usesScalarValueType="YES"/>
+        <attribute name="unit" optional="YES" attributeType="String"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="doses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DoseEntity" inverseName="supplement" inverseEntity="DoseEntity"/>
+        <relationship name="schedule" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="ScheduleEntity" inverseName="supplement" inverseEntity="ScheduleEntity"/>
+    </entity>
+</model>
