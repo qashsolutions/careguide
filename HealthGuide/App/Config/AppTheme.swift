@@ -73,6 +73,32 @@ struct AppTheme {
         static let regular = Font.Weight.regular
     }
     
+    // MARK: - Elder-Friendly Typography
+    struct ElderTypography {
+        // 30-40% larger for better readability
+        static let largeTitle: CGFloat = 46      // was 34
+        static let title: CGFloat = 38           // was 28
+        static let headline: CGFloat = 32        // was 24
+        static let body: CGFloat = 24            // was 17
+        static let callout: CGFloat = 22         // was 16
+        static let subheadline: CGFloat = 20     // was 15
+        static let footnote: CGFloat = 19        // was 14
+        static let caption: CGFloat = 17         // was 12
+        
+        // Card Specific - Critical for medication visibility
+        static let cardHeader: CGFloat = 19      // was 14
+        static let cardTitle: CGFloat = 30       // was 22
+        static let cardSubtitle: CGFloat = 24    // was 17
+        static let medicationName: CGFloat = 26  // was 17
+        static let medicationDose: CGFloat = 22  // was 15
+        
+        // Use same font weights as Typography
+        static let bold = Typography.bold
+        static let semibold = Typography.semibold
+        static let medium = Typography.medium
+        static let regular = Typography.regular
+    }
+    
     // MARK: - Spacing
     struct Spacing {
         // Base spacing units
@@ -98,6 +124,7 @@ struct AppTheme {
         // Touch targets
         static let minimumTouchTarget: CGFloat = 44
         static let buttonHeight: CGFloat = 50
+        static let elderButtonHeight: CGFloat = 60  // Larger for elder users
         static let inputFieldHeight: CGFloat = 50
         
         // Corner Radii

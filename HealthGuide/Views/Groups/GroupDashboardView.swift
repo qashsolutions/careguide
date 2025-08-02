@@ -21,8 +21,16 @@ struct GroupDashboardView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.Colors.backgroundPrimary
-                    .ignoresSafeArea()
+                // Warm off-white gradient background for reduced eye strain
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(hex: "F8F8F8"),
+                        Color(hex: "FAFAFA")
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
                 
                 contentView
             }
@@ -113,15 +121,15 @@ struct GroupDashboardView: View {
             
             Image(systemName: "person.3.fill")
                 .font(.system(size: 60))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .foregroundColor(AppTheme.Colors.successGreen)
             
             Text("No Care Groups Yet")
-                .font(.monaco(AppTheme.Typography.title))
+                .font(.monaco(AppTheme.ElderTypography.title))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)
             
             Text("Create or join a group to share medication schedules with family")
-                .font(.monaco(AppTheme.Typography.body))
+                .font(.monaco(AppTheme.ElderTypography.body))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, AppTheme.Spacing.xxLarge)
@@ -129,10 +137,10 @@ struct GroupDashboardView: View {
             VStack(spacing: AppTheme.Spacing.medium) {
                 Button(action: { showCreateGroup = true }) {
                     Label("Create Group", systemImage: "plus.circle.fill")
-                        .font(.monaco(AppTheme.Typography.body))
+                        .font(.monaco(AppTheme.ElderTypography.callout))
                         .fontWeight(AppTheme.Typography.semibold)
                         .frame(maxWidth: .infinity)
-                        .frame(height: AppTheme.Dimensions.buttonHeight)
+                        .frame(height: AppTheme.Dimensions.elderButtonHeight)
                         .background(AppTheme.Colors.primaryBlue)
                         .foregroundColor(.white)
                         .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
@@ -140,10 +148,10 @@ struct GroupDashboardView: View {
                 
                 Button(action: { showJoinGroup = true }) {
                     Label("Join Group", systemImage: "person.badge.plus")
-                        .font(.monaco(AppTheme.Typography.body))
+                        .font(.monaco(AppTheme.ElderTypography.callout))
                         .fontWeight(AppTheme.Typography.semibold)
                         .frame(maxWidth: .infinity)
-                        .frame(height: AppTheme.Dimensions.buttonHeight)
+                        .frame(height: AppTheme.Dimensions.elderButtonHeight)
                         .background(AppTheme.Colors.backgroundSecondary)
                         .foregroundColor(AppTheme.Colors.primaryBlue)
                         .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
@@ -166,7 +174,7 @@ struct GroupDashboardView: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: AppTheme.Typography.headline))
+                .font(.system(size: AppTheme.ElderTypography.headline))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
                 .frame(
                     minWidth: AppTheme.Dimensions.minimumTouchTarget,
@@ -195,8 +203,8 @@ struct GroupCardView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
                 HStack {
                     Image(systemName: "person.3.fill")
-                        .font(.system(size: AppTheme.Typography.headline))
-                        .foregroundColor(isActive ? AppTheme.Colors.primaryBlue : AppTheme.Colors.textSecondary)
+                        .font(.system(size: AppTheme.ElderTypography.headline))
+                        .foregroundColor(isActive ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary)
                     
                     Spacer()
                     
@@ -205,9 +213,9 @@ struct GroupCardView: View {
                             if isActive && group.inviteCode != nil {
                                 Button(action: { showShareView = true }) {
                                     Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: AppTheme.Typography.footnote))
+                                        .font(.system(size: AppTheme.ElderTypography.footnote))
                                         .foregroundColor(AppTheme.Colors.primaryBlue)
-                                        .frame(width: 30, height: 30)
+                                        .frame(width: 36, height: 36)
                                         .background(AppTheme.Colors.primaryBlue.opacity(0.1))
                                         .clipShape(Circle())
                                 }
@@ -215,7 +223,7 @@ struct GroupCardView: View {
                             }
                             
                             Text("Admin")
-                                .font(.monaco(AppTheme.Typography.caption))
+                                .font(.monaco(AppTheme.ElderTypography.caption))
                                 .padding(.horizontal, AppTheme.Spacing.small)
                                 .padding(.vertical, AppTheme.Spacing.xxSmall)
                                 .background(AppTheme.Colors.primaryBlue.opacity(0.1))
@@ -226,7 +234,7 @@ struct GroupCardView: View {
                 }
                 
                 Text(group.name ?? "Unknown Group")
-                    .font(.monaco(AppTheme.Typography.headline))
+                    .font(.monaco(AppTheme.ElderTypography.headline))
                     .foregroundColor(isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
                 
                 if isActive && isAdmin {
@@ -234,9 +242,9 @@ struct GroupCardView: View {
                         VStack(alignment: .leading, spacing: AppTheme.Spacing.xxSmall) {
                             HStack(spacing: AppTheme.Spacing.xSmall) {
                                 Image(systemName: "ticket.fill")
-                                    .font(.system(size: AppTheme.Typography.footnote))
+                                    .font(.system(size: AppTheme.ElderTypography.footnote))
                                 Text("Code: \(inviteCode)")
-                                    .font(.monaco(AppTheme.Typography.footnote))
+                                    .font(.monaco(AppTheme.ElderTypography.footnote))
                                     .fontWeight(AppTheme.Typography.semibold)
                             }
                             .foregroundColor(AppTheme.Colors.primaryBlue)
@@ -247,14 +255,14 @@ struct GroupCardView: View {
                 
                 HStack {
                     Text("\(memberCount) \(memberCount == 1 ? "member" : "members")")
-                        .font(.monaco(AppTheme.Typography.footnote))
+                        .font(.monaco(AppTheme.ElderTypography.footnote))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                     
                     Spacer()
                     
                     if !isActive {
                         Text("Inactive")
-                            .font(.monaco(AppTheme.Typography.caption))
+                            .font(.monaco(AppTheme.ElderTypography.caption))
                             .padding(.horizontal, AppTheme.Spacing.small)
                             .padding(.vertical, AppTheme.Spacing.xxSmall)
                             .background(AppTheme.Colors.textSecondary.opacity(0.1))

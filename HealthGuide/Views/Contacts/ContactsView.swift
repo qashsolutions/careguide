@@ -9,41 +9,7 @@
 import SwiftUI
 import CoreData
 
-// MARK: - Contact Category
-@available(iOS 18.0, *)
-enum ContactCategory: String, CaseIterable {
-    case doctor = "doctor"
-    case pharmacy = "pharmacy"
-    case emergency = "emergency"
-    case other = "other"
-    
-    var displayName: String {
-        switch self {
-        case .doctor: return "Doctors"
-        case .pharmacy: return "Pharmacies"
-        case .emergency: return "Emergency"
-        case .other: return "Other"
-        }
-    }
-    
-    var iconName: String {
-        switch self {
-        case .doctor: return "stethoscope"
-        case .pharmacy: return "cross.case.fill"
-        case .emergency: return "staroflife.fill"
-        case .other: return "person.fill"
-        }
-    }
-    
-    var color: Color {
-        switch self {
-        case .doctor: return AppTheme.Colors.primaryBlue
-        case .pharmacy: return AppTheme.Colors.successGreen
-        case .emergency: return AppTheme.Colors.errorRed
-        case .other: return AppTheme.Colors.textSecondary
-        }
-    }
-}
+// Use ContactCategory from ContactEntity extension
 
 @available(iOS 18.0, *)
 struct ContactsView: View {
@@ -60,8 +26,16 @@ struct ContactsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.Colors.backgroundPrimary
-                    .ignoresSafeArea()
+                // Warm off-white gradient background for reduced eye strain
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(hex: "F8F8F8"),
+                        Color(hex: "FAFAFA")
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
                 
                 contentView
             }
@@ -73,6 +47,10 @@ struct ContactsView: View {
                 }
             }
             .searchable(text: $searchText, prompt: "Search contacts")
+            .sheet(isPresented: $showAddContact) {
+                AddContactView()
+                    .environment(\.managedObjectContext, viewContext)
+            }
         }
     }
     
@@ -90,7 +68,7 @@ struct ContactsView: View {
     private var contactsList: some View {
         ScrollView {
             VStack(spacing: AppTheme.Spacing.medium) {
-                ForEach(ContactCategory.allCases, id: \.self) { category in
+                ForEach(ContactEntity.ContactCategory.allCases, id: \.self) { category in
                     let categoryContacts = filteredContacts.filter { 
                         $0.category == category.rawValue 
                     }
@@ -111,27 +89,27 @@ struct ContactsView: View {
         VStack(spacing: AppTheme.Spacing.xxLarge) {
             Spacer()
             
-            Image(systemName: "person.crop.circle.badge.plus")
+            Image(systemName: "person.crop.circle.badge.checkmark")
                 .font(.system(size: 60))
-                .foregroundColor(AppTheme.Colors.textSecondary)
+                .foregroundColor(AppTheme.Colors.warningOrange)
             
             Text("No Contacts Yet")
-                .font(.monaco(AppTheme.Typography.title))
+                .font(.monaco(AppTheme.ElderTypography.title))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)
             
             Text("Add your healthcare providers for quick access")
-                .font(.monaco(AppTheme.Typography.body))
+                .font(.monaco(AppTheme.ElderTypography.body))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
             Button(action: { showAddContact = true }) {
                 Label("Add First Contact", systemImage: "plus.circle.fill")
-                    .font(.monaco(AppTheme.Typography.body))
+                    .font(.monaco(AppTheme.ElderTypography.callout))
                     .fontWeight(AppTheme.Typography.semibold)
                     .frame(maxWidth: .infinity)
-                    .frame(height: AppTheme.Dimensions.buttonHeight)
+                    .frame(height: AppTheme.Dimensions.elderButtonHeight)
                     .background(AppTheme.Colors.primaryBlue)
                     .foregroundColor(.white)
                     .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
@@ -149,7 +127,7 @@ struct ContactsView: View {
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             Text("No contacts found")
-                .font(.monaco(AppTheme.Typography.body))
+                .font(.monaco(AppTheme.ElderTypography.body))
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -159,7 +137,7 @@ struct ContactsView: View {
     private var addContactButton: some View {
         Button(action: { showAddContact = true }) {
             Image(systemName: "plus")
-                .font(.system(size: AppTheme.Typography.headline))
+                .font(.system(size: AppTheme.ElderTypography.headline))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
                 .frame(
                     minWidth: AppTheme.Dimensions.minimumTouchTarget,
@@ -184,18 +162,18 @@ struct ContactsView: View {
 // MARK: - Contact Section View
 @available(iOS 18.0, *)
 struct ContactSectionView: View {
-    let category: ContactCategory
+    let category: ContactEntity.ContactCategory
     let contacts: [ContactEntity]
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
             HStack {
                 Image(systemName: category.iconName)
-                    .font(.system(size: AppTheme.Typography.body))
+                    .font(.system(size: AppTheme.ElderTypography.body))
                     .foregroundColor(category.color)
                 
-                Text(category.displayName)
-                    .font(.monaco(AppTheme.Typography.headline))
+                Text(category.rawValue)
+                    .font(.monaco(AppTheme.ElderTypography.headline))
                     .foregroundColor(AppTheme.Colors.textPrimary)
             }
             
@@ -214,22 +192,22 @@ struct ContactCardView: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.medium) {
             Circle()
-                .fill(ContactCategory(rawValue: contact.category ?? "")?.color.opacity(0.1) ?? Color.gray.opacity(0.1))
-                .frame(width: 50, height: 50)
+                .fill(ContactEntity.ContactCategory(rawValue: contact.category ?? "")?.color.opacity(0.1) ?? Color.gray.opacity(0.1))
+                .frame(width: 60, height: 60)
                 .overlay(
                     Text(contact.name?.prefix(2).uppercased() ?? "??")
-                        .font(.monaco(AppTheme.Typography.body))
+                        .font(.monaco(AppTheme.ElderTypography.body))
                         .fontWeight(AppTheme.Typography.semibold)
-                        .foregroundColor(ContactCategory(rawValue: contact.category ?? "")?.color ?? .gray)
+                        .foregroundColor(ContactEntity.ContactCategory(rawValue: contact.category ?? "")?.color ?? .gray)
                 )
             
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxSmall) {
                 Text(contact.name ?? "Unknown Contact")
-                    .font(.monaco(AppTheme.Typography.body))
+                    .font(.monaco(AppTheme.ElderTypography.body))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 
                 Text(contact.phone ?? "No phone")
-                    .font(.monaco(AppTheme.Typography.footnote))
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
             
@@ -237,12 +215,12 @@ struct ContactCardView: View {
             
             if contact.isPrimary {
                 Image(systemName: "star.fill")
-                    .font(.system(size: AppTheme.Typography.footnote))
+                    .font(.system(size: AppTheme.ElderTypography.footnote))
                     .foregroundColor(AppTheme.Colors.warningOrange)
             }
             
             Image(systemName: "chevron.right")
-                .font(.system(size: AppTheme.Typography.footnote))
+                .font(.system(size: AppTheme.ElderTypography.footnote))
                 .foregroundColor(AppTheme.Colors.textSecondary)
         }
         .padding(AppTheme.Spacing.medium)

@@ -35,6 +35,9 @@ extension CoreDataManager {
             // Create schedule
             entity.schedule = createScheduleEntity(from: supplement.schedule, in: context)
             
+            // Pre-create doses for scheduled days
+            createDosesForSupplement(entity, schedule: supplement.schedule, in: context)
+            
             try context.save()
         }
         
@@ -70,6 +73,9 @@ extension CoreDataManager {
                 // Create new schedule entity only if none exists
                 entity.schedule = createScheduleEntity(from: supplement.schedule, in: context)
             }
+            
+            // Re-create doses for updated schedule
+            createDosesForSupplement(entity, schedule: supplement.schedule, in: context)
             
             try context.save()
         }
@@ -128,6 +134,59 @@ extension CoreDataManager {
         entity.startDate = schedule.startDate
         entity.endDate = schedule.endDate
         entity.activeDays = Array(schedule.activeDays) as NSArray
+    }
+    
+    /// Pre-create dose records for all scheduled times
+    nonisolated private func createDosesForSupplement(_ supplementEntity: SupplementEntity, schedule: Schedule, in context: NSManagedObjectContext) {
+        // Delete existing doses first to avoid duplicates
+        if let existingDoses = supplementEntity.doses as? Set<DoseEntity> {
+            existingDoses.forEach { context.delete($0) }
+        }
+        
+        // Create doses for today
+        let today = Date()
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: today)
+        
+        // Create doses for today if it's scheduled
+        if schedule.isScheduledForDate(today) {
+            let todaysDoses = schedule.dosesForDate(today)
+            
+            for scheduledDose in todaysDoses {
+                let doseEntity = DoseEntity(context: context)
+                doseEntity.id = UUID()
+                doseEntity.supplement = supplementEntity
+                doseEntity.scheduledTime = scheduledDose.time
+                doseEntity.period = scheduledDose.period.rawValue
+                doseEntity.isTaken = false
+                doseEntity.takenAt = nil
+                doseEntity.notes = nil
+                
+                #if DEBUG
+                print("📊 Created dose for \(supplementEntity.name ?? "Unknown") at \(scheduledDose.time) for today")
+                #endif
+            }
+        }
+        
+        // Also create doses for the next 7 days to ensure continuity
+        for dayOffset in 1...7 {
+            if let futureDate = calendar.date(byAdding: .day, value: dayOffset, to: startOfToday) {
+                if schedule.isScheduledForDate(futureDate) {
+                    let futureDoses = schedule.dosesForDate(futureDate)
+                    
+                    for scheduledDose in futureDoses {
+                        let doseEntity = DoseEntity(context: context)
+                        doseEntity.id = UUID()
+                        doseEntity.supplement = supplementEntity
+                        doseEntity.scheduledTime = scheduledDose.time
+                        doseEntity.period = scheduledDose.period.rawValue
+                        doseEntity.isTaken = false
+                        doseEntity.takenAt = nil
+                        doseEntity.notes = nil
+                    }
+                }
+            }
+        }
     }
 }
 

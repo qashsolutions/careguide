@@ -15,12 +15,23 @@ struct MyHealthDashboardView: View {
     @StateObject private var viewModel = MyHealthDashboardViewModel()
     @State private var selectedPeriods: [TimePeriod] = [.breakfast]
     @State private var showAddItem = false
+    @State private var showTakeConfirmation = false
+    @State private var pendingDoseToMark: (item: any HealthItem, dose: ScheduledDose?)? = nil
+    @State private var tappedItemId: UUID? = nil
     
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.Colors.backgroundSecondary
-                    .ignoresSafeArea()
+                // Warm off-white gradient background for reduced eye strain
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(hex: "F8F8F8"),
+                        Color(hex: "FAFAFA")
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
                 
                 contentView
             }
@@ -33,6 +44,11 @@ struct MyHealthDashboardView: View {
             }
             .sheet(isPresented: $showAddItem) {
                 AddItemView()
+                    .onDisappear {
+                        Task {
+                            await viewModel.loadData()
+                        }
+                    }
             }
             .refreshable {
                 await viewModel.loadData()
@@ -40,6 +56,27 @@ struct MyHealthDashboardView: View {
             .task {
                 await viewModel.loadData()
                 selectedPeriods = [viewModel.currentPeriod]
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .coreDataDidSave)) { _ in
+                Task {
+                    await viewModel.loadData()
+                }
+            }
+            .alert("Take Medication", isPresented: $showTakeConfirmation) {
+                Button("Yes", role: .none) {
+                    if let pending = pendingDoseToMark {
+                        confirmMarkTaken(pending)
+                    }
+                }
+                Button("No", role: .cancel) {
+                    pendingDoseToMark = nil
+                }
+            } message: {
+                if let pending = pendingDoseToMark {
+                    Text("Have you taken \(pending.item.name)?")
+                } else {
+                    Text("Have you taken this medication?")
+                }
             }
         }
     }
@@ -59,14 +96,11 @@ struct MyHealthDashboardView: View {
     
     private var dashboardContent: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                periodSelectorSection
+            VStack(spacing: AppTheme.Spacing.medium) {
+                // Show all time periods with their medications
+                allTimePeriodsView
                     .padding(.horizontal, AppTheme.Spacing.screenPadding)
                     .padding(.vertical, AppTheme.Spacing.medium)
-                
-                healthItemsList
-                    .padding(.horizontal, AppTheme.Spacing.screenPadding)
-                    .padding(.bottom, AppTheme.Spacing.xxxLarge)
             }
         }
     }
@@ -95,6 +129,135 @@ struct MyHealthDashboardView: View {
         }
     }
     
+    private var allTimePeriodsView: some View {
+        VStack(spacing: AppTheme.Spacing.large) {
+            // Show each time period with its medications
+            ForEach(TimePeriod.allCases.filter { $0 != .custom && $0 != .bedtime }, id: \.self) { period in
+                timePeriodSection(for: period)
+            }
+        }
+    }
+    
+    private func timePeriodSection(for period: TimePeriod) -> some View {
+        let items = viewModel.itemsForPeriod(period)
+        let isCurrentPeriod = period == viewModel.currentPeriod
+        
+        return VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+            // Period header
+            HStack {
+                Label {
+                    Text(period.displayName)
+                        .font(.monaco(AppTheme.ElderTypography.body))
+                        .fontWeight(isCurrentPeriod ? .semibold : .regular)
+                } icon: {
+                    Image(systemName: period.iconName)
+                        .font(.system(size: 20))
+                }
+                .foregroundColor(isCurrentPeriod ? Color.blue : AppTheme.Colors.textPrimary)
+                
+                Spacer()
+                
+                if !items.isEmpty {
+                    Text("\(items.count)")
+                        .font(.monaco(AppTheme.ElderTypography.caption))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(isCurrentPeriod ? Color.blue : Color.gray)
+                        )
+                }
+            }
+            .padding(.horizontal, AppTheme.Spacing.medium)
+            .padding(.vertical, AppTheme.Spacing.small)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Dimensions.buttonCornerRadius)
+                    .fill(isCurrentPeriod ? Color.blue.opacity(0.15) : Color.gray.opacity(0.1))
+            )
+            
+            // Medications list
+            if items.isEmpty {
+                Text("No items scheduled")
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .italic()
+                    .padding(.leading, AppTheme.Spacing.medium)
+            } else {
+                VStack(spacing: AppTheme.Spacing.small) {
+                    ForEach(items, id: \.item.id) { itemData in
+                        medicationRow(itemData: itemData, period: period)
+                    }
+                }
+            }
+        }
+        .padding(AppTheme.Spacing.medium)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
+        )
+    }
+    
+    private func medicationRow(itemData: (item: any HealthItem, dose: ScheduledDose?), period: TimePeriod) -> some View {
+        HStack(spacing: AppTheme.Spacing.medium) {
+            // Icon
+            Image(systemName: itemData.item.itemType.iconName)
+                .font(.system(size: 24))
+                .foregroundColor(itemData.item.itemType.color)
+                .frame(width: 36)
+            
+            // Name and dosage
+            VStack(alignment: .leading, spacing: 2) {
+                Text(itemData.item.name)
+                    .font(.monaco(AppTheme.ElderTypography.medicationName))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                
+                if let medication = itemData.item as? Medication {
+                    Text(medication.dosage)
+                        .font(.monaco(AppTheme.ElderTypography.medicationDose))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+            
+            Spacer()
+            
+            // Mark taken button
+            Button(action: {
+                // Set visual feedback
+                tappedItemId = itemData.item.id
+                
+                // Create dose if needed
+                if itemData.dose == nil {
+                    let calendar = Calendar.current
+                    let time = calendar.date(bySettingHour: period.defaultTime.hour,
+                                           minute: period.defaultTime.minute,
+                                           second: 0,
+                                           of: Date()) ?? Date()
+                    let tempDose = ScheduledDose(time: time, period: period)
+                    pendingDoseToMark = (item: itemData.item, dose: tempDose)
+                } else {
+                    pendingDoseToMark = itemData
+                }
+                
+                // Show confirmation dialog
+                showTakeConfirmation = true
+            }) {
+                Image(systemName: itemData.dose?.isTaken == true ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 32))
+                    .foregroundColor(tappedItemId == itemData.item.id ? Color.blue : 
+                                   (itemData.dose?.isTaken == true ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary))
+                    .scaleEffect(tappedItemId == itemData.item.id ? 1.2 : 1.0)
+                    .animation(.easeInOut(duration: 0.1), value: tappedItemId)
+            }
+            .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .padding(.horizontal, AppTheme.Spacing.small)
+        .padding(.vertical, AppTheme.Spacing.xSmall)
+    }
+    
     private var healthItemsList: some View {
         LazyVStack(spacing: AppTheme.Spacing.medium) {
             ForEach(itemsForSelectedPeriod, id: \.item.id) { itemData in
@@ -111,13 +274,38 @@ struct MyHealthDashboardView: View {
     }
     
     private var emptyStateView: some View {
-        EmptyStateView(
-            title: "No Medications Scheduled",
-            message: "Add your medications, supplements, and diet items to get started",
-            systemImage: "heart.text.square",
-            actionTitle: "Add First Item",
-            action: { showAddItem = true }
-        )
+        VStack(spacing: AppTheme.Spacing.xxLarge) {
+            Spacer()
+            
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 80))
+                .foregroundColor(AppTheme.Colors.primaryBlue)
+            
+            Text("Smart Health Management")
+                .font(.monaco(AppTheme.ElderTypography.title))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+            
+            Text("Add & Manage Medications, Diet, Supplements")
+                .font(.monaco(AppTheme.ElderTypography.body))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, AppTheme.Spacing.xxLarge)
+            
+            Button(action: { showAddItem = true }) {
+                Text("Add First Item")
+                    .font(.monaco(AppTheme.ElderTypography.callout))
+                    .fontWeight(AppTheme.Typography.semibold)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppTheme.Dimensions.elderButtonHeight)
+                    .background(AppTheme.Colors.primaryBlue)
+                    .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
+            }
+            .padding(.horizontal, AppTheme.Spacing.xxLarge)
+            
+            Spacer()
+        }
     }
     
     private var addButton: some View {
@@ -163,6 +351,20 @@ struct MyHealthDashboardView: View {
         
         Task {
             await viewModel.markDoseTaken(itemId: itemData.item.id, doseId: dose.id)
+        }
+    }
+    
+    private func confirmMarkTaken(_ itemData: (item: any HealthItem, dose: ScheduledDose?)) {
+        guard let dose = itemData.dose else { 
+            print("⚠️ No dose to mark as taken")
+            return 
+        }
+        
+        Task {
+            print("✅ Marking dose as taken for: \(itemData.item.name)")
+            await viewModel.markDoseTaken(itemId: itemData.item.id, doseId: dose.id)
+            pendingDoseToMark = nil
+            tappedItemId = nil // Clear visual feedback
         }
     }
     

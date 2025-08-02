@@ -64,6 +64,10 @@ enum HealthItemType: String, CaseIterable, Codable, Sendable {
             return "fork.knife"
         }
     }
+    
+    var color: Color {
+        return headerColor
+    }
 }
 
 // MARK: - Default Implementation
@@ -187,6 +191,21 @@ enum TimePeriod: String, CaseIterable, Codable, Sendable {
         case .dinner: return 3
         case .bedtime: return 4
         case .custom: return 5
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .breakfast:
+            return "sun.max.fill"
+        case .lunch:
+            return "sun.max"
+        case .dinner:
+            return "moon.fill"
+        case .bedtime:
+            return "bed.double.fill"
+        case .custom:
+            return "clock.fill"
         }
     }
 }

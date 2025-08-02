@@ -21,8 +21,16 @@ struct AddItemView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.Colors.backgroundPrimary
-                    .ignoresSafeArea()
+                // Warm off-white gradient background for reduced eye strain
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(hex: "F8F8F8"),
+                        Color(hex: "FAFAFA")
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
                 
                 ScrollView {
                     VStack(spacing: AppTheme.Spacing.large) {
@@ -88,7 +96,7 @@ struct AddItemView: View {
     private var nameField: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
             Text(nameLabel)
-                .font(.monaco(AppTheme.Typography.footnote))
+                .font(.monaco(AppTheme.ElderTypography.footnote))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             AppleIntelligenceField(
@@ -111,7 +119,7 @@ struct AddItemView: View {
     private var dosageField: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
             Text(AppStrings.AddItem.dosageLabel)
-                .font(.monaco(AppTheme.Typography.footnote))
+                .font(.monaco(AppTheme.ElderTypography.footnote))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             AppleIntelligenceField(
@@ -134,11 +142,11 @@ struct AddItemView: View {
     private var notesField: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
             Text(AppStrings.AddItem.notesLabel)
-                .font(.monaco(AppTheme.Typography.footnote))
+                .font(.monaco(AppTheme.ElderTypography.footnote))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             TextField(AppStrings.AddItem.notesLabel, text: $viewModel.notes)
-                .font(.monaco(AppTheme.Typography.body))
+                .font(.monaco(AppTheme.ElderTypography.body))
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .focused($focusedField, equals: .notes)
                 .accessibilityIdentifier("notes_field")
@@ -160,7 +168,7 @@ struct AddItemView: View {
     private var frequencySection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
             Text(AppStrings.AddItem.frequencyLabel)
-                .font(.monaco(AppTheme.Typography.headline))
+                .font(.monaco(AppTheme.ElderTypography.headline))
                 .fontWeight(AppTheme.Typography.semibold)
                 .foregroundColor(AppTheme.Colors.textPrimary)
             
@@ -175,7 +183,7 @@ struct AddItemView: View {
     private var scheduleDaysSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
             Text(AppStrings.AddItem.scheduleLabel)
-                .font(.monaco(AppTheme.Typography.headline))
+                .font(.monaco(AppTheme.ElderTypography.headline))
                 .fontWeight(AppTheme.Typography.semibold)
                 .foregroundColor(AppTheme.Colors.textPrimary)
             
@@ -191,7 +199,7 @@ struct AddItemView: View {
                     .foregroundColor(AppTheme.Colors.successGreen)
                 
                 Text(String(format: AppStrings.Schedule.confirmationFormat, viewModel.reminderCount, viewModel.selectedDays.count))
-                    .font(.monaco(AppTheme.Typography.footnote))
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
             .padding(.top, AppTheme.Spacing.small)
@@ -203,11 +211,11 @@ struct AddItemView: View {
     private var addButton: some View {
         Button(action: viewModel.saveItem) {
             Text(viewModel.canAdd ? addButtonTitle : "Complete Required Fields")
-                .font(.monaco(AppTheme.Typography.body))
+                .font(.monaco(AppTheme.ElderTypography.callout))
                 .fontWeight(AppTheme.Typography.semibold)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: AppTheme.Dimensions.buttonHeight)
+                .frame(height: AppTheme.Dimensions.elderButtonHeight)
                 .background(buttonBackground)
                 .shadow(
                     color: viewModel.canAdd ? AppTheme.Colors.primaryBlue.opacity(AppTheme.Effects.buttonShadowOpacity) : .clear,

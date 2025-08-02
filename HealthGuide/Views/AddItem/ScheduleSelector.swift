@@ -173,8 +173,8 @@ struct CalendarScheduleSelector: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
-            Text("Next 5 Days")
-                .font(.monaco(AppTheme.Typography.footnote))
+            Text("5 Days")
+                .font(.monaco(AppTheme.ElderTypography.footnote))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             LazyVGrid(columns: columns, spacing: AppTheme.Spacing.small) {

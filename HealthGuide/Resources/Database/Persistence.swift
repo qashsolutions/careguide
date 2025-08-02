@@ -51,11 +51,11 @@ struct PersistenceController {
         return controller
     }()
     
-    let container: NSPersistentCloudKitContainer
+    let container: NSPersistentContainer
     
     init(inMemory: Bool = false) {
         // Use the same model name as CoreDataStack
-        container = NSPersistentCloudKitContainer(name: "HealthDataModel")
+        container = NSPersistentContainer(name: "HealthDataModel")
         
         // Configure the store description
         guard let description = container.persistentStoreDescriptions.first else {
@@ -65,16 +65,19 @@ struct PersistenceController {
         if inMemory {
             description.url = URL(fileURLWithPath: "/dev/null")
         } else {
+            // TEMPORARILY DISABLED CLOUDKIT - Testing memory issues
             // Configure for CloudKit
-            description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-                containerIdentifier: "iCloud.com.qashsolutions.HealthGuide"
-            )
+            // description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+            //     containerIdentifier: "iCloud.com.qashsolutions.HealthGuide"
+            // )
             
-            // Enable remote change notifications
+            // Enable history tracking (useful even without CloudKit)
             description.setOption(true as NSNumber, 
                                 forKey: NSPersistentHistoryTrackingKey)
-            description.setOption(true as NSNumber, 
-                                forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            
+            // DISABLED: Remote change notifications for CloudKit
+            // description.setOption(true as NSNumber, 
+            //                     forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         }
         
         container.loadPersistentStores { storeDescription, error in
@@ -91,7 +94,7 @@ struct PersistenceController {
             } else {
                 print("✅ Core Data loaded successfully")
                 print("✅ Store URL: \(storeDescription.url?.absoluteString ?? "unknown")")
-                print("✅ CloudKit enabled: \(storeDescription.cloudKitContainerOptions != nil)")
+                print("✅ CloudKit enabled: \(storeDescription.cloudKitContainerOptions != nil)") // Should show false now
             }
         }
         

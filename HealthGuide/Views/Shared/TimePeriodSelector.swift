@@ -49,7 +49,7 @@ struct TimePeriodSelector: View {
     private var periodChipsGrid: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: AppTheme.Spacing.small) {
-                ForEach(TimePeriod.allCases.filter { $0 != .custom }, id: \.self) { period in
+                ForEach(TimePeriod.allCases.filter { $0 != .custom && $0 != .bedtime }, id: \.self) { period in
                     TimePeriodChip(
                         period: period,
                         isSelected: selectedPeriods.contains(period),

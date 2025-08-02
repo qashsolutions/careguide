@@ -27,25 +27,57 @@ actor HealthDataProcessor {
         async let medications = coreDataManager.fetchMedications()
         async let supplements = coreDataManager.fetchSupplements()
         async let dietItems = coreDataManager.fetchDietItems()
+        async let allDoseRecords = coreDataManager.fetchDosesForDate(Date())
         
         // Wait for all data to be fetched
-        let (medicationList, supplementList, dietItemList) = try await (medications, supplements, dietItems)
+        let (medicationList, supplementList, dietItemList, doseRecords) = try await (medications, supplements, dietItems, allDoseRecords)
         
         #if DEBUG
-        print("🏥 HealthDataProcessor: Fetched \(medicationList.count) medications, \(supplementList.count) supplements, \(dietItemList.count) diet items")
+        print("🏥 HealthDataProcessor: Fetched \(medicationList.count) medications, \(supplementList.count) supplements, \(dietItemList.count) diet items, \(doseRecords.count) doses")
         #endif
         
-        // Process each type of health item
+        // Process each type of health item with their persisted doses
         var allItems: [(item: any HealthItem, dose: ScheduledDose?)] = []
         
-        // Process medications with their scheduled doses
-        allItems.append(contentsOf: processHealthItems(medicationList))
+        // Process medications with their persisted doses
+        for medication in medicationList {
+            let medicationDoses = doseRecords.filter { $0.itemType == "medication" && $0.itemId == medication.id }
+            if medicationDoses.isEmpty {
+                // If no doses found, add without dose (shouldn't happen in production)
+                allItems.append((item: medication, dose: nil))
+            } else {
+                for doseRecord in medicationDoses {
+                    let scheduledDose = convertDoseRecordToScheduledDose(doseRecord)
+                    allItems.append((item: medication, dose: scheduledDose))
+                }
+            }
+        }
         
-        // Process supplements with their scheduled doses
-        allItems.append(contentsOf: processHealthItems(supplementList))
+        // Process supplements with their persisted doses
+        for supplement in supplementList {
+            let supplementDoses = doseRecords.filter { $0.itemType == "supplement" && $0.itemId == supplement.id }
+            if supplementDoses.isEmpty {
+                allItems.append((item: supplement, dose: nil))
+            } else {
+                for doseRecord in supplementDoses {
+                    let scheduledDose = convertDoseRecordToScheduledDose(doseRecord)
+                    allItems.append((item: supplement, dose: scheduledDose))
+                }
+            }
+        }
         
-        // Process diet items with their scheduled doses
-        allItems.append(contentsOf: processHealthItems(dietItemList))
+        // Process diet items with their persisted doses
+        for dietItem in dietItemList {
+            let dietDoses = doseRecords.filter { $0.itemType == "diet" && $0.itemId == dietItem.id }
+            if dietDoses.isEmpty {
+                allItems.append((item: dietItem, dose: nil))
+            } else {
+                for doseRecord in dietDoses {
+                    let scheduledDose = convertDoseRecordToScheduledDose(doseRecord)
+                    allItems.append((item: dietItem, dose: scheduledDose))
+                }
+            }
+        }
         
         // Sort items by scheduled time for optimal user experience
         let sortedItems = sortItemsByTime(allItems)
@@ -91,27 +123,26 @@ actor HealthDataProcessor {
     
     // MARK: - Private Processing Methods
     
-    /// Process a collection of health items to include their scheduled doses for today
-    /// - Parameter items: Array of health items to process
-    /// - Returns: Array of tuples containing items and their associated doses
-    private func processHealthItems<T: HealthItem>(_ items: [T]) -> [(item: any HealthItem, dose: ScheduledDose?)] {
-        var processedItems: [(item: any HealthItem, dose: ScheduledDose?)] = []
-        
-        for item in items {
-            let todaysDoses = item.dosesForToday()
-            
-            if todaysDoses.isEmpty && item.isScheduledForToday() {
-                // Item is scheduled but has no specific doses - add as general item
-                processedItems.append((item: item, dose: nil))
-            } else {
-                // Item has specific scheduled doses - add each dose separately
-                for dose in todaysDoses {
-                    processedItems.append((item: item, dose: dose))
-                }
-            }
+    /// Convert DoseRecord to ScheduledDose
+    private func convertDoseRecordToScheduledDose(_ record: DoseRecord) -> ScheduledDose {
+        guard let period = TimePeriod(rawValue: record.period) else {
+            // Default to breakfast if period is invalid
+            return ScheduledDose(
+                id: record.id,
+                time: record.scheduledTime,
+                period: .breakfast,
+                isTaken: record.isTaken,
+                takenAt: record.takenAt
+            )
         }
         
-        return processedItems
+        return ScheduledDose(
+            id: record.id,
+            time: record.scheduledTime,
+            period: period,
+            isTaken: record.isTaken,
+            takenAt: record.takenAt
+        )
     }
     
     /// Sort health items by their scheduled time for chronological display
@@ -132,8 +163,7 @@ actor HealthDataProcessor {
         var counts: [TimePeriod: Int] = [
             .breakfast: 0,
             .lunch: 0,
-            .dinner: 0,
-            .bedtime: 0
+            .dinner: 0
         ]
         
         for item in items {
@@ -170,6 +200,6 @@ extension HealthDataProcessor {
     /// Get all available time periods in display order
     /// - Returns: Array of time periods for UI display
     static func getAllTimePeriods() -> [TimePeriod] {
-        return [.breakfast, .lunch, .dinner, .bedtime]
+        return [.breakfast, .lunch, .dinner]
     }
 }

@@ -72,7 +72,7 @@ struct AppleIntelligenceField: View {
     /// Native iOS text field with Apple Intelligence integration
     private var intelligentTextField: some View {
         TextField(placeholder, text: $text)
-            .font(.monaco(AppTheme.Typography.body))
+            .font(.monaco(AppTheme.ElderTypography.body))
             .foregroundColor(AppTheme.Colors.textPrimary)
             .textFieldStyle(.plain)
             .focused($isFocused)
@@ -109,7 +109,7 @@ struct AppleIntelligenceField: View {
                 .foregroundColor(AppTheme.Colors.primaryBlue)
             
             Text("Smart")
-                .font(.monaco(AppTheme.Typography.caption))
+                .font(.monaco(AppTheme.ElderTypography.caption))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
         }
     }
@@ -159,7 +159,7 @@ struct AppleIntelligenceField: View {
     private var suggestionHeader: some View {
         HStack {
             Text("Recent")
-                .font(.monaco(AppTheme.Typography.caption))
+                .font(.monaco(AppTheme.ElderTypography.caption))
                 .foregroundColor(AppTheme.Colors.textSecondary)
             
             Spacer()
@@ -167,7 +167,7 @@ struct AppleIntelligenceField: View {
             Button("Clear") {
                 clearRecentSuggestions()
             }
-            .font(.monaco(AppTheme.Typography.caption))
+            .font(.monaco(AppTheme.ElderTypography.caption))
             .foregroundColor(AppTheme.Colors.primaryBlue)
         }
         .padding(.horizontal, AppTheme.Spacing.medium)

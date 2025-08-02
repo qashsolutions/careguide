@@ -34,6 +34,110 @@ extension CoreDataManager {
     
     // MARK: - Dose Tracking
     
+    /// Fetch doses for a specific date and convert to Sendable dose records
+    func fetchDosesForDate(_ date: Date) async throws -> [DoseRecord] {
+        try await context.perform { @Sendable [self, context] in
+            let calendar = Calendar.current
+            let startOfDay = calendar.startOfDay(for: date)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? date
+            
+            let request = DoseEntity.fetchRequest()
+            request.predicate = NSPredicate(
+                format: "scheduledTime >= %@ AND scheduledTime < %@",
+                startOfDay as CVarArg,
+                endOfDay as CVarArg
+            )
+            request.sortDescriptors = [NSSortDescriptor(key: "scheduledTime", ascending: true)]
+            
+            let entities = try context.fetch(request)
+            return entities.compactMap { convertToDoseRecord($0) }
+        }
+    }
+    
+    /// Fetch doses for today for a specific medication
+    func fetchTodaysDosesForMedication(_ medicationId: UUID) async throws -> [DoseRecord] {
+        try await context.perform { @Sendable [self, context] in
+            let calendar = Calendar.current
+            let today = Date()
+            let startOfDay = calendar.startOfDay(for: today)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? today
+            
+            // Fetch the medication entity first
+            let medicationRequest = MedicationEntity.fetchRequest()
+            medicationRequest.predicate = NSPredicate(format: "id == %@", medicationId as CVarArg)
+            guard let medication = try context.fetch(medicationRequest).first else {
+                return []
+            }
+            
+            let request = DoseEntity.fetchRequest()
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "medication == %@", medication),
+                NSPredicate(format: "scheduledTime >= %@", startOfDay as CVarArg),
+                NSPredicate(format: "scheduledTime < %@", endOfDay as CVarArg)
+            ])
+            request.sortDescriptors = [NSSortDescriptor(key: "scheduledTime", ascending: true)]
+            
+            let entities = try context.fetch(request)
+            return entities.compactMap { convertToDoseRecord($0) }
+        }
+    }
+    
+    /// Fetch doses for today for a specific supplement
+    func fetchTodaysDosesForSupplement(_ supplementId: UUID) async throws -> [DoseRecord] {
+        try await context.perform { @Sendable [self, context] in
+            let calendar = Calendar.current
+            let today = Date()
+            let startOfDay = calendar.startOfDay(for: today)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? today
+            
+            // Fetch the supplement entity first
+            let supplementRequest = SupplementEntity.fetchRequest()
+            supplementRequest.predicate = NSPredicate(format: "id == %@", supplementId as CVarArg)
+            guard let supplement = try context.fetch(supplementRequest).first else {
+                return []
+            }
+            
+            let request = DoseEntity.fetchRequest()
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "supplement == %@", supplement),
+                NSPredicate(format: "scheduledTime >= %@", startOfDay as CVarArg),
+                NSPredicate(format: "scheduledTime < %@", endOfDay as CVarArg)
+            ])
+            request.sortDescriptors = [NSSortDescriptor(key: "scheduledTime", ascending: true)]
+            
+            let entities = try context.fetch(request)
+            return entities.compactMap { convertToDoseRecord($0) }
+        }
+    }
+    
+    /// Fetch doses for today for a specific diet item
+    func fetchTodaysDosesForDiet(_ dietId: UUID) async throws -> [DoseRecord] {
+        try await context.perform { @Sendable [self, context] in
+            let calendar = Calendar.current
+            let today = Date()
+            let startOfDay = calendar.startOfDay(for: today)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? today
+            
+            // Fetch the diet entity first
+            let dietRequest = DietEntity.fetchRequest()
+            dietRequest.predicate = NSPredicate(format: "id == %@", dietId as CVarArg)
+            guard let diet = try context.fetch(dietRequest).first else {
+                return []
+            }
+            
+            let request = DoseEntity.fetchRequest()
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "diet == %@", diet),
+                NSPredicate(format: "scheduledTime >= %@", startOfDay as CVarArg),
+                NSPredicate(format: "scheduledTime < %@", endOfDay as CVarArg)
+            ])
+            request.sortDescriptors = [NSSortDescriptor(key: "scheduledTime", ascending: true)]
+            
+            let entities = try context.fetch(request)
+            return entities.compactMap { convertToDoseRecord($0) }
+        }
+    }
+    
     /// Mark a dose as taken using relationships
     func markDoseTaken(forSupplementId supplementId: UUID, doseId: UUID, takenAt: Date = Date()) async throws {
         try await context.perform { @Sendable [context] in
@@ -263,6 +367,24 @@ extension CoreDataManager {
     
     // MARK: - Private Helpers
     
+    /// Convert DoseEntity to ScheduledDose for UI display
+    nonisolated func convertToScheduledDose(_ entity: DoseEntity) -> ScheduledDose? {
+        guard let id = entity.id,
+              let scheduledTime = entity.scheduledTime,
+              let periodString = entity.period,
+              let period = TimePeriod(rawValue: periodString) else {
+            return nil
+        }
+        
+        return ScheduledDose(
+            id: id,
+            time: scheduledTime,
+            period: period,
+            isTaken: entity.isTaken,
+            takenAt: entity.takenAt
+        )
+    }
+    
     nonisolated private func convertToDoseRecord(_ entity: DoseEntity) -> DoseRecord? {
         guard let id = entity.id else { return nil }
         
@@ -301,7 +423,7 @@ extension CoreDataManager {
 // MARK: - Supporting Types
 
 @available(iOS 18.0, *)
-struct DoseRecord {
+struct DoseRecord: Sendable {
     let id: UUID
     let itemId: UUID
     let itemType: String // "supplement", "medication", or "diet"
@@ -313,7 +435,7 @@ struct DoseRecord {
 }
 
 @available(iOS 18.0, *)
-struct AdherenceStats {
+struct AdherenceStats: Sendable {
     let totalDoses: Int
     let takenDoses: Int
     let missedDoses: Int

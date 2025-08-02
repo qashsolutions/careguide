@@ -11,5 +11,6 @@ import CoreData
 
 @objc(ContactEntity)
 public class ContactEntity: NSManagedObject {
-
+    // awakeFromInsert is already implemented in ContactEntity+Extensions.swift
+    // which handles all default values and validation
 }

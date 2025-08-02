@@ -23,8 +23,16 @@ struct ConflictsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.Colors.backgroundPrimary
-                    .ignoresSafeArea()
+                // Warm off-white gradient background for reduced eye strain
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(hex: "F8F8F8"),
+                        Color(hex: "FAFAFA")
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
                 
                 contentView
             }
@@ -71,12 +79,12 @@ struct ConflictsView: View {
                 .foregroundColor(AppTheme.Colors.successGreen)
             
             Text(filterSeverity == nil ? "No Conflicts Found" : "No Conflicts in Filter")
-                .font(.monaco(AppTheme.Typography.title))
+                .font(.monaco(AppTheme.ElderTypography.title))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)
             
             Text(filterSeverity == nil ? "Your medications are safe to take together" : "No conflicts found in selected category")
-                .font(.monaco(AppTheme.Typography.body))
+                .font(.monaco(AppTheme.ElderTypography.body))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, AppTheme.Spacing.xxLarge)
@@ -88,17 +96,17 @@ struct ConflictsView: View {
     private var warningBanner: some View {
         HStack(spacing: AppTheme.Spacing.medium) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: AppTheme.Typography.headline))
+                .font(.system(size: AppTheme.ElderTypography.headline))
                 .foregroundColor(.white)
             
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xxSmall) {
                 Text("High Priority Conflicts")
-                    .font(.monaco(AppTheme.Typography.body))
+                    .font(.monaco(AppTheme.ElderTypography.body))
                     .fontWeight(AppTheme.Typography.semibold)
                     .foregroundColor(.white)
                 
                 Text("Always consult your healthcare provider")
-                    .font(.monaco(AppTheme.Typography.footnote))
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
                     .foregroundColor(.white.opacity(0.9))
             }
             
@@ -122,7 +130,7 @@ struct ConflictsView: View {
             }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.system(size: AppTheme.Typography.headline))
+                .font(.system(size: AppTheme.ElderTypography.headline))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
                 .frame(
                     minWidth: AppTheme.Dimensions.minimumTouchTarget,
@@ -157,21 +165,21 @@ struct ConflictCardView: View {
                     
                     if let checkedAt = conflict.checkedAt {
                         Text(checkedAt.relativeTimeString)
-                            .font(.monaco(AppTheme.Typography.caption))
+                            .font(.monaco(AppTheme.ElderTypography.caption))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                 }
                 
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
                     Text("\(conflict.medicationA ?? "") + \(conflict.medicationB ?? "")")
-                        .font(.monaco(AppTheme.Typography.body))
+                        .font(.monaco(AppTheme.ElderTypography.body))
                         .fontWeight(AppTheme.Typography.semibold)
                         .foregroundColor(AppTheme.Colors.textPrimary)
                     
                     Text(conflict.conflictDescription ?? "Interaction details unavailable")
-                        .font(.monaco(AppTheme.Typography.footnote))
+                        .font(.monaco(AppTheme.ElderTypography.footnote))
                         .foregroundColor(AppTheme.Colors.textSecondary)
-                        .lineLimit(2)
+                        .lineLimit(3)
             }
         }
         .padding(AppTheme.Spacing.large)
@@ -195,10 +203,10 @@ struct SeverityIndicator: View {
     var body: some View {
         HStack(spacing: AppTheme.Spacing.xxSmall) {
             Image(systemName: severity.iconName)
-                .font(.system(size: AppTheme.Typography.footnote))
+                .font(.system(size: AppTheme.ElderTypography.footnote))
             
             Text(severity.displayName)
-                .font(.monaco(AppTheme.Typography.caption))
+                .font(.monaco(AppTheme.ElderTypography.caption))
                 .fontWeight(AppTheme.Typography.semibold)
         }
         .foregroundColor(severity.color)

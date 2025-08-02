@@ -16,7 +16,7 @@ struct AppStrings {
         static let name = "HealthGuide"
         static let dashboard = "HealthGuide"
         static let todayFormat = "Today, %@"
-        static let welcome = "Welcome to Careguide"
+        static let welcome = "Careguide"
         static let tagline = "Smart health management."
     }
     
@@ -72,7 +72,7 @@ struct AppStrings {
         static let notesLabel = "Notes (Optional)"
         static let frequencyLabel = "How often per day?"
         static let timesLabel = "Times to take"
-        static let scheduleLabel = "Schedule for next 5 days"
+        static let scheduleLabel = "Schedule - 5 days"
         static let addButton = "Add to MyHealth"
         static let addMedicationButton = "Add Medication to Schedule"
         static let cannotAddButton = "Cannot Add - Limit Reached"
@@ -92,7 +92,7 @@ struct AppStrings {
         static let todayFormat = "Today (%@)"
         static let tomorrowFormat = "Tomorrow (%@)"
         static let dateFormat = "%@"
-        static let confirmationFormat = "✓ This will create %d medication reminders over %d days"
+        static let confirmationFormat = "This will create %d medication reminders over %d days"
     }
     
     // MARK: - Validation Messages

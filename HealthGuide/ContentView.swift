@@ -13,34 +13,15 @@ import CoreData
 @available(iOS 18.0, *)
 struct ContentView: View {
     @EnvironmentObject private var biometricAuth: BiometricAuthManager
-    @State private var isAuthenticated = false
     
     var body: some View {
-        mainContent
-            .task {
-                if biometricAuth.isBiometricEnabled {
-                    await authenticate()
-                } else {
-                    isAuthenticated = true
-                }
-            }
-    }
-    
-    @ViewBuilder
-    private var mainContent: some View {
-        if isAuthenticated || !biometricAuth.isBiometricEnabled {
+        // Use BiometricAuthManager's isAuthenticated state directly
+        // This prevents duplicate state and memory issues
+        if biometricAuth.isAuthenticated || !biometricAuth.isBiometricEnabled {
             TabBarView()
                 .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
         } else {
             AuthenticationView()
-        }
-    }
-    
-    @MainActor
-    private func authenticate() async {
-        let success = await biometricAuth.authenticate()
-        withAnimation {
-            isAuthenticated = success
         }
     }
 }
