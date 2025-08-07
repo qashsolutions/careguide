@@ -160,7 +160,7 @@ struct InviteCodeView: View {
             }
             
             TextField("", text: $viewModel.joinCode)
-                .keyboardType(.numberPad)
+                .keyboardType(.default)
                 .focused($isCodeFieldFocused)
                 .opacity(0)
                 .frame(width: 1, height: 1)
@@ -279,7 +279,8 @@ final class InviteCodeViewModel: ObservableObject {
     }
     
     func validateJoinCode(_ code: String) {
-        let filtered = code.filter { $0.isNumber }
+        // Allow alphanumeric characters only, remove spaces and special characters
+        let filtered = code.uppercased().filter { $0.isLetter || $0.isNumber }
         joinCode = String(filtered.prefix(6))
     }
     

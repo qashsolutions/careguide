@@ -1,0 +1,36 @@
+//
+//  Config.xcconfig
+//  HealthGuide
+//
+//  Configuration file for API keys and environment settings
+//  IMPORTANT: Add this file to .gitignore
+//
+
+// MARK: - Apple In-App Purchase Configuration
+// These are for StoreKit 2 - products must match App Store Connect
+IAP_MONTHLY_PRODUCT_ID = 1942
+// IAP_ANNUAL_PRODUCT_ID = (not configured yet)
+
+// Subscription Group ID (from App Store Connect)
+IAP_SUBSCRIPTION_GROUP = Careguide Premium Plan
+
+// MARK: - Stripe Configuration (For Web/Backend Only)
+// These are for potential web subscriptions or future physical goods
+// DO NOT use for in-app digital subscriptions
+STRIPE_PUBLISHABLE_KEY = pk_test_YOUR_PUBLISHABLE_KEY_HERE
+STRIPE_WEBHOOK_SECRET = whsec_YOUR_WEBHOOK_SECRET_HERE
+
+// Backend Configuration
+BACKEND_URL_DEBUG = http://localhost:3000
+BACKEND_URL_RELEASE = https://api.healthguide.com
+
+// MARK: - CloudKit Configuration
+CLOUDKIT_CONTAINER = iCloud.com.qashsolutions.HealthGuide
+CLOUDKIT_ENABLED = YES
+
+// MARK: - App Configuration
+APP_BUNDLE_ID = com.qashsolutions.HealthGuide
+APP_GROUP_ID = group.com.qashsolutions.HealthGuide
+
+// MARK: - Environment
+ENVIRONMENT = DEBUG

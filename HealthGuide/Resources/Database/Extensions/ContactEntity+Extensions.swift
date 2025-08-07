@@ -104,6 +104,9 @@ extension ContactEntity {
             #endif
         }
         
+        // Note: email, displayName, and createdAt don't exist in ContactEntity
+        // We only have: id, name, category, phone, isPrimary, notes
+        
         // Validate existing values
         validateAndFixData()
         

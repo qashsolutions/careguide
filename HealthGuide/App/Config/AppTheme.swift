@@ -75,22 +75,22 @@ struct AppTheme {
     
     // MARK: - Elder-Friendly Typography
     struct ElderTypography {
-        // 30-40% larger for better readability
-        static let largeTitle: CGFloat = 46      // was 34
-        static let title: CGFloat = 38           // was 28
-        static let headline: CGFloat = 32        // was 24
-        static let body: CGFloat = 24            // was 17
-        static let callout: CGFloat = 22         // was 16
-        static let subheadline: CGFloat = 20     // was 15
-        static let footnote: CGFloat = 19        // was 14
-        static let caption: CGFloat = 17         // was 12
+        // Reduced by 2px per caregiver feedback - users can adjust using iOS accessibility settings
+        static let largeTitle: CGFloat = 40      // was 42 (previously 46, originally 34)
+        static let title: CGFloat = 32           // was 34 (previously 38, originally 28)
+        static let headline: CGFloat = 26        // was 28 (previously 32, originally 24)
+        static let body: CGFloat = 18            // was 20 (previously 24, originally 17)
+        static let callout: CGFloat = 16         // was 18 (previously 22, originally 16)
+        static let subheadline: CGFloat = 14     // was 16 (previously 20, originally 15)
+        static let footnote: CGFloat = 13        // was 15 (previously 19, originally 14)
+        static let caption: CGFloat = 11         // was 13 (previously 17, originally 12)
         
         // Card Specific - Critical for medication visibility
-        static let cardHeader: CGFloat = 19      // was 14
-        static let cardTitle: CGFloat = 30       // was 22
-        static let cardSubtitle: CGFloat = 24    // was 17
-        static let medicationName: CGFloat = 26  // was 17
-        static let medicationDose: CGFloat = 22  // was 15
+        static let cardHeader: CGFloat = 13      // was 15 (previously 19, originally 14)
+        static let cardTitle: CGFloat = 24       // was 26 (previously 30, originally 22)
+        static let cardSubtitle: CGFloat = 18    // was 20 (previously 24, originally 17)
+        static let medicationName: CGFloat = 20  // was 22 (previously 26, originally 17)
+        static let medicationDose: CGFloat = 16  // was 18 (previously 22, originally 15)
         
         // Use same font weights as Typography
         static let bold = Typography.bold
@@ -189,14 +189,22 @@ struct AppTheme {
 // MARK: - Dynamic Type Support
 @available(iOS 18.0, *)
 extension Font {
-    /// Monaco font with Dynamic Type support for elderly users
+    /// System font with Dynamic Type support for elderly users
     static func monaco(_ size: CGFloat, relativeTo style: Font.TextStyle = .body) -> Font {
-        return Font.custom("Monaco", size: size, relativeTo: style)
+        // Use San Francisco (system font) instead of Monaco to avoid missing font issues
+        // .rounded design provides better readability for elderly users
+        return Font.system(size: size, weight: .regular, design: .rounded)
     }
     
     /// System font with Dynamic Type support
     static func appFont(_ style: Font.TextStyle) -> Font {
         return Font.system(style, design: .default)
+    }
+    
+    /// Safe custom font loader with fallback
+    static func customFont(_ name: String, size: CGFloat) -> Font {
+        // Always use system font to avoid missing font crashes
+        return Font.system(size: size, weight: .regular, design: .default)
     }
 }
 

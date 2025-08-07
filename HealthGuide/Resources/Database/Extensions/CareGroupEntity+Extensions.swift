@@ -93,4 +93,104 @@ extension CareGroupEntity {
         guard let expiry = inviteCodeExpiry else { return false }
         return expiry > Date()
     }
+    
+    // MARK: - Member Management
+    
+    /// Get the super admin member (original creator)
+    public var superAdminMember: GroupMemberEntity? {
+        guard let members = members as? Set<GroupMemberEntity> else { return nil }
+        return members.first { $0.isSuperAdmin }
+    }
+    
+    /// Get the current content admin member
+    public var contentAdminMember: GroupMemberEntity? {
+        guard let members = members as? Set<GroupMemberEntity> else { return nil }
+        return members.first { $0.isContentAdmin }
+    }
+    
+    /// Get all regular members (non-admin)
+    public var regularMembers: [GroupMemberEntity] {
+        guard let members = members as? Set<GroupMemberEntity> else { return [] }
+        return members.filter { !$0.isSuperAdmin && !$0.isContentAdmin }
+    }
+    
+    /// Assign content admin role to a member (only super admin can do this)
+    /// Automatically demotes current content admin to regular member
+    @discardableResult
+    public func assignContentAdmin(to newAdmin: GroupMemberEntity, by requestingUser: GroupMemberEntity) -> Bool {
+        // Only super admin can assign content admin role
+        guard requestingUser.isSuperAdmin else {
+            #if DEBUG
+            print("❌ CareGroupEntity: Only super admin can assign content admin role")
+            #endif
+            return false
+        }
+        
+        // Cannot make super admin a content admin
+        guard !newAdmin.isSuperAdmin else {
+            #if DEBUG
+            print("❌ CareGroupEntity: Cannot change super admin role")
+            #endif
+            return false
+        }
+        
+        // If there's a current content admin, demote them to member
+        if let currentContentAdmin = contentAdminMember {
+            currentContentAdmin.role = GroupMemberEntity.MemberRole.member.rawValue
+            #if DEBUG
+            print("↓ CareGroupEntity: Demoted \(currentContentAdmin.name ?? "member") from content admin to member")
+            #endif
+        }
+        
+        // Promote the new member to content admin
+        newAdmin.role = GroupMemberEntity.MemberRole.contentAdmin.rawValue
+        updatedAt = Date()
+        
+        #if DEBUG
+        print("↑ CareGroupEntity: Promoted \(newAdmin.name ?? "member") to content admin")
+        #endif
+        
+        return true
+    }
+    
+    /// Remove content admin role (reverts to regular member)
+    @discardableResult
+    public func removeContentAdmin(by requestingUser: GroupMemberEntity) -> Bool {
+        // Only super admin can remove content admin role
+        guard requestingUser.isSuperAdmin else {
+            #if DEBUG
+            print("❌ CareGroupEntity: Only super admin can remove content admin role")
+            #endif
+            return false
+        }
+        
+        // Find and demote current content admin
+        if let currentContentAdmin = contentAdminMember {
+            currentContentAdmin.role = GroupMemberEntity.MemberRole.member.rawValue
+            updatedAt = Date()
+            
+            #if DEBUG
+            print("↓ CareGroupEntity: Removed content admin role from \(currentContentAdmin.name ?? "member")")
+            #endif
+            
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Check if a user can edit content in this group
+    public func userCanEditContent(userID: UUID) -> Bool {
+        guard let members = members as? Set<GroupMemberEntity> else { return false }
+        
+        // Find the member with matching userID
+        guard let member = members.first(where: { $0.userID == userID }) else { return false }
+        
+        return member.canEditContent
+    }
+    
+    /// Check if a user is the super admin of this group
+    public func isSuperAdmin(userID: UUID) -> Bool {
+        return adminUserID == userID
+    }
 }

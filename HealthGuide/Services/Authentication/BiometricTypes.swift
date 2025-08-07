@@ -138,7 +138,7 @@ struct LockoutStatus: Sendable, Equatable {
 /// Configuration constants for authentication behavior
 enum AuthenticationConfiguration {
     /// Default authentication reason shown to users
-    static let defaultReason = "Access your health data securely"
+    static let defaultReason = " "
     
     /// Passcode fallback reason
     static let passcodeReason = "Enter your passcode to access health data"

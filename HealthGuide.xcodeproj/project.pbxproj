@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E47D90592E412287005A0292 /* Stripe in Frameworks */ = {isa = PBXBuildFile; productRef = E47D90582E412287005A0292 /* Stripe */; };
+		E47D905B2E412287005A0292 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = E47D905A2E412287005A0292 /* StripeApplePay */; };
+		E47D905E2E412FF3005A0292 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E47D905D2E412FF3005A0292 /* StoreKit.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		E4CBA0D52E334C7600B05A42 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +30,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E47D905D2E412FF3005A0292 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		E4CBA0C22E334C7500B05A42 /* HealthGuide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HealthGuide.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4CBA0D42E334C7600B05A42 /* HealthGuideTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HealthGuideTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4CBA0DE2E334C7600B05A42 /* HealthGuideUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HealthGuideUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +72,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E47D905E2E412FF3005A0292 /* StoreKit.framework in Frameworks */,
+				E47D90592E412287005A0292 /* Stripe in Frameworks */,
+				E47D905B2E412287005A0292 /* StripeApplePay in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,12 +95,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		E47D905C2E412FF2005A0292 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				E47D905D2E412FF3005A0292 /* StoreKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		E4CBA0B92E334C7500B05A42 = {
 			isa = PBXGroup;
 			children = (
 				E4CBA0C42E334C7500B05A42 /* HealthGuide */,
 				E4CBA0D72E334C7600B05A42 /* HealthGuideTests */,
 				E4CBA0E12E334C7600B05A42 /* HealthGuideUITests */,
+				E47D905C2E412FF2005A0292 /* Frameworks */,
 				E4CBA0C32E334C7500B05A42 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -125,6 +144,8 @@
 			);
 			name = HealthGuide;
 			packageProductDependencies = (
+				E47D90582E412287005A0292 /* Stripe */,
+				E47D905A2E412287005A0292 /* StripeApplePay */,
 			);
 			productName = HealthGuide;
 			productReference = E4CBA0C22E334C7500B05A42 /* HealthGuide.app */;
@@ -208,6 +229,9 @@
 			);
 			mainGroup = E4CBA0B92E334C7500B05A42;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E47D90572E412287005A0292 /* XCRemoteSwiftPackageReference "stripe-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E4CBA0C32E334C7500B05A42 /* Products */;
 			projectDirPath = "";
@@ -284,6 +308,8 @@
 /* Begin XCBuildConfiguration section */
 		E4CBA0E62E334C7600B05A42 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E4CBA0C42E334C7500B05A42 /* HealthGuide */;
+			baseConfigurationReferenceRelativePath = Configuration/Config.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -348,6 +374,8 @@
 		};
 		E4CBA0E72E334C7600B05A42 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E4CBA0C42E334C7500B05A42 /* HealthGuide */;
+			baseConfigurationReferenceRelativePath = Configuration/Config.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -405,11 +433,13 @@
 		};
 		E4CBA0E92E334C7600B05A42 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E4CBA0C42E334C7500B05A42 /* HealthGuide */;
+			baseConfigurationReferenceRelativePath = Configuration/Config.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_ENTITLEMENTS = HealthGuide/HealthGuide.entitlements;
+				CODE_SIGN_ENTITLEMENTS = HealthGuide/HealthGuideDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -419,12 +449,12 @@
 				INFOPLIST_FILE = HealthGuide/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Careguide;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "HealthGuide uses the camera to scan medication barcodes and capture prescription information.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "HealthGuide accesses contacts to help you share health information with family members and caregivers.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "HealthGuide uses Face ID to secure your health information and provide quick access to your medication schedule.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Careguide uses the camera to scan medication barcodes and capture prescription information.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Careguide accesses contacts to help you share health information with family members and caregivers.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Careguide uses Face ID to secure your information and provide quick access to you.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to read your health data for medication tracking";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs to save your medication and diet information";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "HealthGuide needs access to your photos to save and retrieve medication images and prescriptions.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Careguide needs access to your photos to save and retrieve medication images and prescriptions.";
 				INFOPLIST_KEY_NSSiriUsageDescription = "Use Siri to check medications, log doses, and get reminders about your health schedule.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -449,6 +479,8 @@
 		};
 		E4CBA0EA2E334C7600B05A42 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = E4CBA0C42E334C7500B05A42 /* HealthGuide */;
+			baseConfigurationReferenceRelativePath = Configuration/Config.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -463,12 +495,12 @@
 				INFOPLIST_FILE = HealthGuide/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Careguide;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "HealthGuide uses the camera to scan medication barcodes and capture prescription information.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "HealthGuide accesses contacts to help you share health information with family members and caregivers.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "HealthGuide uses Face ID to secure your health information and provide quick access to your medication schedule.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Careguide uses the camera to scan medication barcodes and capture prescription information.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Careguide accesses contacts to help you share health information with family members and caregivers.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Careguide uses Face ID to secure your information and provide quick access to you.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to read your health data for medication tracking";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs to save your medication and diet information";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "HealthGuide needs access to your photos to save and retrieve medication images and prescriptions.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Careguide needs access to your photos to save and retrieve medication images and prescriptions.";
 				INFOPLIST_KEY_NSSiriUsageDescription = "Use Siri to check medications, log doses, and get reminders about your health schedule.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -601,6 +633,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E47D90572E412287005A0292 /* XCRemoteSwiftPackageReference "stripe-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 24.18.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E47D90582E412287005A0292 /* Stripe */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E47D90572E412287005A0292 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = Stripe;
+		};
+		E47D905A2E412287005A0292 /* StripeApplePay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E47D90572E412287005A0292 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeApplePay;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E4CBA0BA2E334C7500B05A42 /* Project object */;
 }

@@ -30,12 +30,13 @@ struct AuthenticationView: View {
             VStack(spacing: AppTheme.Spacing.xxLarge) {
                 Spacer()
                 
-                // App Icon
-                Image("AppIcon")
+                // App Icon - Shows your actual app logo for brand recognition
+                Image("AppLogo")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 120, height: 120)
                     .cornerRadius(24)
+                    .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
                 
                 // Welcome Text
                 VStack(spacing: AppTheme.Spacing.small) {
@@ -127,7 +128,7 @@ struct AuthenticationView: View {
         isAuthenticating = true
         
         Task {
-            _ = await authManager.authenticate(reason: AppStrings.Auth.useFaceID)
+            _ = await authManager.authenticate(reason: " ")
             await MainActor.run {
                 isAuthenticating = false
             }

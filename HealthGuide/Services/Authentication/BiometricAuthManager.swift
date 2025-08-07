@@ -151,7 +151,7 @@ final class BiometricAuthManager: ObservableObject {
         // Start new authentication task on background queue
         authenticationTask = Task { [weak self] in
             guard let self = self else { return }
-            _ = await self.authenticate()
+            _ = await self.authenticate(reason: " ")
         }
     }
     

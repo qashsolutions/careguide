@@ -1,0 +1,22 @@
+<!-- Add these entries to your Info.plist file -->
+
+<!-- API Configuration -->
+<key>API_KEY</key>
+<string>YOUR_API_KEY_HERE</string>
+
+<!-- Stripe Configuration (Publishable key only, never add secret key) -->
+<key>STRIPE_PUBLISHABLE_KEY</key>
+<string>pk_test_YOUR_PUBLISHABLE_KEY_HERE</string>
+
+<!-- Backend URLs -->
+<key>BACKEND_URL_DEBUG</key>
+<string>http://localhost:3000</string>
+
+<key>BACKEND_URL_PRODUCTION</key>
+<string>https://api.your-domain.com</string>
+
+<!-- StoreKit Configuration for Apple Pay -->
+<key>SKPaymentTransactions</key>
+<array>
+    <string>1942</string>
+</array>

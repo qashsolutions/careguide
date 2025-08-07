@@ -15,9 +15,9 @@ extension GroupMemberEntity {
     
     // MARK: - Member Roles
     public enum MemberRole: String, CaseIterable, Sendable {
-        case admin = "admin"
-        case member = "member"
-        case viewer = "viewer"
+        case superAdmin = "super_admin"  // Original creator - full control
+        case contentAdmin = "content_admin"  // Can edit content only
+        case member = "member"  // View-only access
         
         /// Default role for new members
         static let defaultRole = MemberRole.member
@@ -25,19 +25,41 @@ extension GroupMemberEntity {
         /// Display name for UI
         var displayName: String {
             switch self {
-            case .admin: return "Administrator"
+            case .superAdmin: return "Super Admin"
+            case .contentAdmin: return "Content Admin"
             case .member: return "Member"
-            case .viewer: return "Viewer"
             }
         }
         
         /// Icon name for UI
         var iconName: String {
             switch self {
-            case .admin: return "crown.fill"
-            case .member: return "person.fill"
-            case .viewer: return "eye.fill"
+            case .superAdmin: return "star.circle.fill"  // Star for super admin
+            case .contentAdmin: return "pencil.circle.fill"  // Pencil for content editing
+            case .member: return "person.circle"  // Person for regular member
             }
+        }
+        
+        /// Icon color for UI
+        var iconColor: Color {
+            switch self {
+            case .superAdmin: return AppTheme.Colors.warningOrange
+            case .contentAdmin: return AppTheme.Colors.primaryBlue
+            case .member: return AppTheme.Colors.textSecondary
+            }
+        }
+        
+        /// Can this role edit content?
+        var canEditContent: Bool {
+            switch self {
+            case .superAdmin, .contentAdmin: return true
+            case .member: return false
+            }
+        }
+        
+        /// Can this role manage members?
+        var canManageMembers: Bool {
+            return self == .superAdmin
         }
     }
     
@@ -223,12 +245,36 @@ extension GroupMemberEntity {
         #endif
     }
     
-    /// Check if member is admin
-    public var isAdmin: Bool {
-        role == MemberRole.admin.rawValue
+    /// Get role as enum
+    public var roleEnum: MemberRole? {
+        guard let roleString = role else { return nil }
+        return MemberRole(rawValue: roleString)
     }
     
-    /// Get role as enum
+    /// Check if member is super admin
+    public var isSuperAdmin: Bool {
+        return roleEnum == .superAdmin
+    }
+    
+    /// Check if member is content admin
+    public var isContentAdmin: Bool {
+        return roleEnum == .contentAdmin
+    }
+    
+    /// Check if member can edit content (super admin or content admin)
+    public var canEditContent: Bool {
+        return roleEnum?.canEditContent ?? false
+    }
+    
+    /// Check if member can manage other members (only super admin)
+    public var canManageMembers: Bool {
+        return roleEnum?.canManageMembers ?? false
+    }
+    
+    /// Check if member is admin (legacy - now checks for any admin role)
+    public var isAdmin: Bool {
+        return isSuperAdmin || isContentAdmin
+    }
     public var memberRole: MemberRole? {
         guard let role = role else { return nil }
         return MemberRole(rawValue: role)

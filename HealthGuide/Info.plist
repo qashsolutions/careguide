@@ -27,11 +27,15 @@
 		<string>com.healthguide.setReminder</string>
 	</array>
 	<key>NSUserNotificationsUsageDescription</key>
-	<string>HealthGuide sends notifications to remind you about medication doses and health appointments.</string>
-	<key>UIAppFonts</key>
+	<string>Careguide sends notifications to remind you about medication doses and health appointments.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Careguide needs camera access to capture photos of your medical documents for easy storage and reference.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Do you want to allow &quot;Careguide&quot; to use Face ID?</string>
+	<!-- Custom fonts removed - using system fonts only -->
+	<!-- <key>UIAppFonts</key>
 	<array>
-		<string>Monaco.ttf</string>
-	</array>
+	</array> -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

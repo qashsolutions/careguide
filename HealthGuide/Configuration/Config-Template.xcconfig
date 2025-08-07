@@ -1,0 +1,24 @@
+//
+//  Config-Template.xcconfig
+//  HealthGuide
+//
+//  IMPORTANT: Copy this file to Config.xcconfig and add your actual keys
+//  Never commit Config.xcconfig to version control
+//
+
+// Stripe Configuration
+// Get these from https://dashboard.stripe.com/apikeys
+STRIPE_PUBLISHABLE_KEY = pk_test_YOUR_PUBLISHABLE_KEY_HERE
+STRIPE_SECRET_KEY = sk_test_YOUR_SECRET_KEY_HERE // Never use this in client code!
+
+// Stripe Product/Price IDs
+// Create these in Stripe Dashboard under Products
+STRIPE_MONTHLY_PRICE_ID = price_YOUR_MONTHLY_PRICE_ID
+STRIPE_ANNUAL_PRICE_ID = price_YOUR_ANNUAL_PRICE_ID
+
+// Backend Configuration
+BACKEND_URL_DEBUG = http://localhost:3000
+BACKEND_URL_RELEASE = https://api.healthguide.com
+
+// Apple Pay Configuration
+APPLE_MERCHANT_ID = merchant.com.healthguide

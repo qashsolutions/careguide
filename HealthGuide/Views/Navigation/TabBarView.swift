@@ -11,10 +11,13 @@ import SwiftUI
 @available(iOS 18.0, *)
 struct TabBarView: View {
     @State private var selectedTab = 0
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaymentPrompt = false
     
-    init() {
-        print("🔧 TabBarView: Initializing...")
-    }
+    // Cache views to prevent recreation
+    @State private var hasInitialized = false
+    
+    // Removed init to prevent repeated initialization logs
     
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -27,7 +30,7 @@ struct TabBarView: View {
                 Label(
                     title: { Text(AppStrings.TabBar.myHealth) },
                     icon: { 
-                        Image(systemName: selectedTab == 0 ? "heart.text.square.fill" : "heart.text.square")
+                        Image(systemName: selectedTab == 0 ? "heart.text.clipboard.fill" : "heart.text.clipboard")
                             .font(.system(size: AppTheme.Dimensions.tabIconSize))
                     }
                 )
@@ -43,7 +46,7 @@ struct TabBarView: View {
                 Label(
                     title: { Text(AppStrings.TabBar.groups) },
                     icon: { 
-                        Image(systemName: selectedTab == 1 ? "person.3.fill" : "person.3")
+                        Image(systemName: selectedTab == 1 ? "person.fill" : "person")
                             .font(.system(size: AppTheme.Dimensions.tabIconSize))
                     }
                 )
@@ -81,10 +84,48 @@ struct TabBarView: View {
                 )
             }
             .tag(3)
+            
+            // Folder Tab
+            NavigationStack {
+                DocumentsView()
+                    .navigationTitle("Folder")
+            }
+            .tabItem {
+                Label(
+                    title: { Text("Folder") },
+                    icon: { 
+                        Image(systemName: selectedTab == 4 ? "folder.fill" : "folder")
+                            .font(.system(size: AppTheme.Dimensions.tabIconSize))
+                    }
+                )
+            }
+            .tag(4)
         }
         .tint(AppTheme.Colors.primaryBlue)
         .onAppear {
-            setupTabBarAppearance()
+            if !hasInitialized {
+                setupTabBarAppearance()
+                checkForPaymentPrompt()
+                hasInitialized = true
+            }
+        }
+        .sheet(isPresented: $showPaymentPrompt) {
+            TrialPaymentPromptView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showSubscriptionView)) { _ in
+            // Show subscription view when notification is received
+            selectedTab = 3 // Navigate to Settings tab
+        }
+    }
+    
+    // MARK: - Payment Prompt Check
+    private func checkForPaymentPrompt() {
+        // Check if we should show payment prompt (day 5+ of trial)
+        if subscriptionManager.shouldShowPaymentPrompt {
+            // Delay slightly to avoid sheet presentation conflicts
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                showPaymentPrompt = true
+            }
         }
     }
     

@@ -12,6 +12,7 @@ import CoreServices
 
 @available(iOS 18.0, *)
 struct MyHealthDashboardView: View {
+    @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var viewModel = MyHealthDashboardViewModel()
     @State private var selectedPeriods: [TimePeriod] = [.breakfast]
     @State private var showAddItem = false
@@ -35,10 +36,11 @@ struct MyHealthDashboardView: View {
                 
                 contentView
             }
-            .navigationTitle(currentDateTitle)
+            .navigationTitle("My Health")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
+                    // Add button
                     addButton
                 }
             }

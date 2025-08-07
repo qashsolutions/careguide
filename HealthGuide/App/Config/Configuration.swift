@@ -21,15 +21,17 @@ enum Configuration: Sendable {
     enum API {
         static let claudeAPIKey = Bundle.main.object(forInfoDictionaryKey: "CLAUDE_API_KEY") as? String ?? ""
         static let geminiAPIKey = Bundle.main.object(forInfoDictionaryKey: "GEMINI_API_KEY") as? String ?? ""
-        static let stripePublishableKey = Bundle.main.object(forInfoDictionaryKey: "STRIPE_PUBLISHABLE_KEY") as? String ?? ""
-        static let stripeSecretKey = Bundle.main.object(forInfoDictionaryKey: "STRIPE_SECRET_KEY") as? String ?? ""
+        // STRIPE KEYS DISABLED - Apple IAP required for digital subscriptions
+        // These are preserved for future web portal or physical goods
+        // static let stripePublishableKey = Bundle.main.object(forInfoDictionaryKey: "STRIPE_PUBLISHABLE_KEY") as? String ?? ""
+        // static let stripeSecretKey = Bundle.main.object(forInfoDictionaryKey: "STRIPE_SECRET_KEY") as? String ?? ""
     }
     
     // MARK: - API Endpoints
     enum Endpoints {
         static let claudeBaseURL = "https://api.anthropic.com/v1"
         static let geminiBaseURL = "https://generativelanguage.googleapis.com/v1"
-        static let stripeBaseURL = "https://api.stripe.com/v1"
+        // static let stripeBaseURL = "https://api.stripe.com/v1" // DISABLED - Using Apple IAP
         
         // AI Conflict Check Endpoints
         static let conflictCheckPath = "/messages"

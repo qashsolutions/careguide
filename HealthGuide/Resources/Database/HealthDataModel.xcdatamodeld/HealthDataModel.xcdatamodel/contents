@@ -1,5 +1,29 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23788.4" systemVersion="24F74" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <entity name="AccessSessionEntity" representedClassName="AccessSessionEntity" syncable="YES">
+        <attribute name="accessDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="accessType" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="actionCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="appVersion" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="daysSinceFirstUse" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="deviceModel" optional="YES" attributeType="String"/>
+        <attribute name="documentsViewed" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="featuresAccessed" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="isActive" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="medicationUpdatesCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="previousSessionId" optional="YES" attributeType="String"/>
+        <attribute name="sessionDurationSeconds" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="sessionEndTime" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="sessionStartTime" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="timeZone" optional="YES" attributeType="String"/>
+        <attribute name="totalSessionsCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <relationship name="refund" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="RefundEntity" inverseName="accessSession" inverseEntity="RefundEntity"/>
+        <relationship name="subscription" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SubscriptionEntity" inverseName="accessSessions" inverseEntity="SubscriptionEntity"/>
+    </entity>
     <entity name="CareGroupEntity" representedClassName="CareGroupEntity" syncable="YES">
         <attribute name="adminUserID" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
         <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
@@ -47,6 +71,25 @@
         <relationship name="doses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DoseEntity" inverseName="diet" inverseEntity="DoseEntity"/>
         <relationship name="schedule" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="ScheduleEntity" inverseName="diet" inverseEntity="ScheduleEntity"/>
     </entity>
+    <entity name="DocumentCategoryEntity" representedClassName="DocumentCategoryEntity" syncable="YES">
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="documentCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="iconName" optional="YES" attributeType="String" defaultValueString="folder.fill"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <relationship name="documents" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DocumentEntity" inverseName="categoryRelation" inverseEntity="DocumentEntity"/>
+    </entity>
+    <entity name="DocumentEntity" representedClassName="DocumentEntity" syncable="YES">
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="filename" optional="YES" attributeType="String"/>
+        <attribute name="fileSize" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="fileType" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="localPath" optional="YES" attributeType="String"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <relationship name="categoryRelation" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="DocumentCategoryEntity" inverseName="documents" inverseEntity="DocumentCategoryEntity"/>
+    </entity>
     <entity name="DoseEntity" representedClassName="DoseEntity" syncable="YES">
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="isTaken" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
@@ -89,6 +132,27 @@
         <relationship name="doses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DoseEntity" inverseName="medication" inverseEntity="DoseEntity"/>
         <relationship name="schedule" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="ScheduleEntity" inverseName="medication" inverseEntity="ScheduleEntity"/>
     </entity>
+    <entity name="PaymentEntity" representedClassName="PaymentEntity" syncable="YES">
+        <attribute name="amount" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="String"/>
+        <attribute name="invoiceId" optional="YES" attributeType="String"/>
+        <attribute name="paymentDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="receiptUrl" optional="YES" attributeType="String"/>
+        <attribute name="status" optional="YES" attributeType="String"/>
+        <relationship name="subscription" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SubscriptionEntity" inverseName="payments" inverseEntity="SubscriptionEntity"/>
+    </entity>
+    <entity name="RefundEntity" representedClassName="RefundEntity" syncable="YES">
+        <attribute name="amount" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="daysSinceSubscription" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="String"/>
+        <attribute name="reason" optional="YES" attributeType="String"/>
+        <attribute name="refundDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="status" optional="YES" attributeType="String"/>
+        <relationship name="accessSession" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="AccessSessionEntity" inverseName="refund" inverseEntity="AccessSessionEntity"/>
+        <relationship name="subscription" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SubscriptionEntity" inverseName="refunds" inverseEntity="SubscriptionEntity"/>
+    </entity>
     <entity name="ScheduleEntity" representedClassName="ScheduleEntity" syncable="YES">
         <attribute name="activeDays" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSArray"/>
         <attribute name="customTimes" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="NSArray"/>
@@ -100,6 +164,27 @@
         <relationship name="diet" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="DietEntity" inverseName="schedule" inverseEntity="DietEntity"/>
         <relationship name="medication" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="MedicationEntity" inverseName="schedule" inverseEntity="MedicationEntity"/>
         <relationship name="supplement" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SupplementEntity" inverseName="schedule" inverseEntity="SupplementEntity"/>
+    </entity>
+    <entity name="SubscriptionEntity" representedClassName="SubscriptionEntity" syncable="YES">
+        <attribute name="autoRenew" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="cancellationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="currency" optional="YES" attributeType="String"/>
+        <attribute name="currentPeriodEnd" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="customerId" optional="YES" attributeType="String"/>
+        <attribute name="hasUsedRefund" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="String"/>
+        <attribute name="paymentMethod" optional="YES" attributeType="String"/>
+        <attribute name="priceAmount" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
+        <attribute name="startDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="status" optional="YES" attributeType="String"/>
+        <attribute name="trialEndDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="userEmail" optional="YES" attributeType="String"/>
+        <attribute name="userPhone" optional="YES" attributeType="String"/>
+        <relationship name="accessSessions" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="AccessSessionEntity" inverseName="subscription" inverseEntity="AccessSessionEntity"/>
+        <relationship name="payments" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PaymentEntity" inverseName="subscription" inverseEntity="PaymentEntity"/>
+        <relationship name="refunds" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="RefundEntity" inverseName="subscription" inverseEntity="RefundEntity"/>
     </entity>
     <entity name="SupplementEntity" representedClassName="SupplementEntity" syncable="YES">
         <attribute name="brand" optional="YES" attributeType="String"/>

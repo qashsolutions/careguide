@@ -3,11 +3,12 @@
 //  HealthGuide
 //
 //  Add healthcare provider contacts with device import
-//  Elder-friendly interface with large touch targets
+//  Elder-friendly interface with duplicate prevention
 //
 
 import SwiftUI
 import ContactsUI
+import CoreData
 
 @available(iOS 18.0, *)
 struct AddContactView: View {
@@ -16,19 +17,24 @@ struct AddContactView: View {
     
     @State private var name = ""
     @State private var phone = ""
-    // Note: email field removed as it's not in the ContactEntity model
+    // Note: ContactEntity doesn't have email field
     @State private var category: ContactEntity.ContactCategory = .doctor
+    @State private var specialization = ""
+    @State private var address = ""
     @State private var isPrimary = false
-    @State private var notes = ""
     
     @State private var showContactPicker = false
+    @State private var showCategoryConfirmation = false
+    @State private var importedContact: CNContact?
+    @State private var showDuplicateAlert = false
+    @State private var duplicateContactName = ""
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
     
     @FocusState private var focusedField: Field?
     
     enum Field {
-        case name, phone, notes
+        case name, phone, specialization, address
     }
     
     var body: some View {
@@ -80,7 +86,7 @@ struct AddContactView: View {
                     }
                 }
             }
-            .navigationTitle("Add Contact")
+            .navigationTitle("Add Healthcare Contact")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -93,9 +99,34 @@ struct AddContactView: View {
             .sheet(isPresented: $showContactPicker) {
                 ContactPickerView { contact in
                     if let contact = contact {
+                        importedContact = contact
                         populateFromContact(contact)
+                        showCategoryConfirmation = true
                     }
                 }
+            }
+            .alert("Confirm Contact Type", isPresented: $showCategoryConfirmation) {
+                ForEach([ContactEntity.ContactCategory.doctor, .pharmacy, .emergency, .other], id: \.self) { cat in
+                    Button(cat.rawValue) {
+                        category = cat
+                        checkForDuplicate()
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    clearForm()
+                }
+            } message: {
+                Text("Is \(name) a healthcare provider? Please select the type:")
+            }
+            .alert("Duplicate Contact", isPresented: $showDuplicateAlert) {
+                Button("Replace Existing", role: .destructive) {
+                    saveContact(replaceDuplicate: true)
+                }
+                Button("Cancel", role: .cancel) {
+                    clearForm()
+                }
+            } message: {
+                Text("A contact with the phone number \(phone) already exists (\(duplicateContactName)). Do you want to replace it?")
             }
             .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK") { }
@@ -150,23 +181,51 @@ struct AddContactView: View {
                 isRequired: true
             )
             
-            // Phone field
+            // Contact Information Card
+            VStack(spacing: AppTheme.Spacing.medium) {
+                Text("Contact Information")
+                    .font(.monaco(AppTheme.ElderTypography.headline))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Text("Phone number is required")
+                    .font(.monaco(AppTheme.ElderTypography.caption))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Phone field
+                fieldSection(
+                    label: "Phone",
+                    text: $phone,
+                    placeholder: "(555) 123-4567",
+                    field: .phone,
+                    keyboardType: .phonePad
+                )
+                
+                // Note: Email field not available in ContactEntity
+            }
+            .padding(AppTheme.Spacing.medium)
+            .background(AppTheme.Colors.backgroundSecondary)
+            .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
+            
+            // Specialization field
             fieldSection(
-                label: "Phone",
-                text: $phone,
-                placeholder: "(555) 123-4567",
-                field: .phone,
-                keyboardType: .phonePad,
-                isRequired: true
+                label: "Specialization (Optional)",
+                text: $specialization,
+                placeholder: "Cardiologist, General Physician, etc.",
+                field: .specialization
             )
             
-            // Email field removed - not in ContactEntity model
+            // Address field
+            fieldSection(
+                label: "Address (Optional)",
+                text: $address,
+                placeholder: "123 Medical Center Dr, Suite 100",
+                field: .address
+            )
             
             // Primary toggle
             primaryToggleSection
-            
-            // Notes field
-            notesSection
         }
     }
     
@@ -178,7 +237,7 @@ struct AddContactView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: AppTheme.Spacing.small) {
-                    ForEach(ContactEntity.ContactCategory.allCases, id: \.self) { cat in
+                    ForEach([ContactEntity.ContactCategory.doctor, .pharmacy, .emergency, .specialist, .nurse, .therapist, .other], id: \.self) { cat in
                         CategoryButton(
                             category: cat,
                             isSelected: category == cat,
@@ -210,11 +269,12 @@ struct AddContactView: View {
                 }
             }
             
-            TextField(placeholder, text: text)
+            TextField(placeholder, text: text, axis: field == .address ? .vertical : .horizontal)
                 .font(.monaco(AppTheme.ElderTypography.body))
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .keyboardType(keyboardType)
                 .focused($focusedField, equals: field)
+                .lineLimit(field == .address ? 3 : 1)
         }
     }
     
@@ -240,22 +300,8 @@ struct AddContactView: View {
         .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
     }
     
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
-            Text("Notes (Optional)")
-                .font(.monaco(AppTheme.ElderTypography.footnote))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-            
-            TextField("Special instructions or information", text: $notes, axis: .vertical)
-                .font(.monaco(AppTheme.ElderTypography.body))
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .lineLimit(3...6)
-                .focused($focusedField, equals: .notes)
-        }
-    }
-    
     private var saveButton: some View {
-        Button(action: saveContact) {
+        Button(action: { checkForDuplicate() }) {
             Text("Save Contact")
                 .font(.monaco(AppTheme.ElderTypography.callout))
                 .fontWeight(.semibold)
@@ -271,8 +317,10 @@ struct AddContactView: View {
     // MARK: - Computed Properties
     
     private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasName = !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasPhone = !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        
+        return hasName && hasPhone
     }
     
     // MARK: - Actions
@@ -292,7 +340,7 @@ struct AddContactView: View {
             phone = phoneNumber.value.stringValue
         }
         
-        // Email not stored - ContactEntity doesn't have email field
+        // Email not available in ContactEntity model
         
         // Try to guess category based on organization
         if !contact.organizationName.isEmpty {
@@ -300,29 +348,98 @@ struct AddContactView: View {
             if organization.contains("pharmacy") {
                 category = .pharmacy
             } else if organization.contains("hospital") ||
-                      organization.contains("emergency") {
+                      organization.contains("clinic") ||
+                      organization.contains("medical") {
+                category = .doctor
+            } else if organization.contains("emergency") {
                 category = .emergency
             }
         }
+        
+        // Address
+        if let postalAddress = contact.postalAddresses.first {
+            let value = postalAddress.value
+            address = [value.street, value.city, value.state, value.postalCode]
+                .filter { !$0.isEmpty }
+                .joined(separator: ", ")
+        }
     }
     
-    private func saveContact() {
-        let newContact = ContactEntity(context: viewContext)
-        // id is set automatically in awakeFromInsert
-        newContact.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        newContact.phone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
-        newContact.category = category.rawValue
-        newContact.isPrimary = isPrimary
-        newContact.notes = notes.isEmpty ? nil : notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Note: id is set automatically in awakeFromInsert
+    private func checkForDuplicate() {
+        guard !phone.isEmpty else {
+            saveContact(replaceDuplicate: false)
+            return
+        }
+        
+        let request = ContactEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "phone == %@", phone)
         
         do {
+            let existingContacts = try viewContext.fetch(request)
+            if let existing = existingContacts.first {
+                duplicateContactName = existing.name ?? "Unknown"
+                showDuplicateAlert = true
+            } else {
+                saveContact(replaceDuplicate: false)
+            }
+        } catch {
+            saveContact(replaceDuplicate: false)
+        }
+    }
+    
+    private func saveContact(replaceDuplicate: Bool) {
+        do {
+            // Delete existing if replacing
+            if replaceDuplicate && !phone.isEmpty {
+                let request = ContactEntity.fetchRequest()
+                request.predicate = NSPredicate(format: "phone == %@", phone)
+                let existingContacts = try viewContext.fetch(request)
+                existingContacts.forEach { viewContext.delete($0) }
+            }
+            
+            let newContact = ContactEntity(context: viewContext)
+            // id is set automatically in awakeFromInsert
+            newContact.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            newContact.phone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+            // email field not available in ContactEntity
+            newContact.category = category.rawValue
+            newContact.isPrimary = isPrimary
+            
+            // Combine specialization and address in notes field
+            var notesContent = ""
+            
+            if !specialization.isEmpty {
+                notesContent = specialization.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            
+            if !address.isEmpty {
+                let cleanAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+                if notesContent.isEmpty {
+                    notesContent = cleanAddress
+                } else {
+                    notesContent = "\(notesContent)\n\(cleanAddress)"
+                }
+            }
+            
+            newContact.notes = notesContent.isEmpty ? nil : notesContent
+            
             try viewContext.save()
             dismiss()
         } catch {
             errorMessage = "Failed to save contact. Please try again."
             showErrorAlert = true
         }
+    }
+    
+    private func clearForm() {
+        name = ""
+        phone = ""
+        // email field removed
+        specialization = ""
+        address = ""
+        category = .doctor
+        isPrimary = false
+        importedContact = nil
     }
 }
 
@@ -367,7 +484,8 @@ struct ContactPickerView: UIViewControllerRepresentable {
             CNContactFamilyNameKey,
             CNContactPhoneNumbersKey,
             CNContactEmailAddressesKey,
-            CNContactOrganizationNameKey
+            CNContactOrganizationNameKey,
+            CNContactPostalAddressesKey
         ]
         return picker
     }
