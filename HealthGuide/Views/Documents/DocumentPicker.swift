@@ -325,7 +325,7 @@ struct CategoryChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: AppTheme.Spacing.xSmall) {
-                Image(systemName: category.iconName ?? "folder")
+                Image(systemName: category.safeIconName)
                     .font(.system(size: 16))
                 
                 Text(category.displayName)

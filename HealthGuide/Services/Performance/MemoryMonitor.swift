@@ -59,14 +59,17 @@ final class MemoryMonitor: ObservableObject {
     // MARK: - Setup
     
     private func setupMemoryMonitoring() {
-        // Monitor memory every 60 seconds (reduced frequency)
-        memoryTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+        // DISABLED - Timer causing high CPU usage
+        // Only check memory on app lifecycle events and warnings
+        /*
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { _ in
             Task { @MainActor in
                 self.checkMemoryUsage()
             }
         }
+        */
         
-        // Initial check
+        // Initial check only
         checkMemoryUsage()
     }
     
@@ -119,9 +122,10 @@ final class MemoryMonitor: ObservableObject {
             isLowMemory = false
         }
         
-        #if DEBUG
-        print("💾 Memory: \(String(format: "%.2f", memoryUsage))MB - \(memoryWarningLevel.message)")
-        #endif
+        // Disabled debug logging to reduce overhead
+        // #if DEBUG
+        // print("💾 Memory: \(String(format: "%.2f", memoryUsage))MB - \(memoryWarningLevel.message)")
+        // #endif
     }
     
     private func getCurrentMemoryUsage() -> Double {

@@ -12,6 +12,7 @@ struct HealthGuideApp: App {
     @StateObject private var memoryMonitor = MemoryMonitor.shared
     @StateObject private var accessManager = AccessSessionManager.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @StateObject private var medicationScheduler = MedicationNotificationScheduler.shared
     @State private var isInitialized = false
     
     let persistenceController = PersistenceController.shared
@@ -43,6 +44,7 @@ struct HealthGuideApp: App {
                     .environmentObject(memoryMonitor)
                     .environmentObject(accessManager)
                     .environmentObject(subscriptionManager)
+                    .environmentObject(medicationScheduler)
                     .onAppear {
                         #if DEBUG
                         print("✅ HealthGuideApp: Main window appeared")
@@ -53,7 +55,12 @@ struct HealthGuideApp: App {
     }
     
     private func initializeManagers() async {
+        let startTime = Date()
+        print("⏱️ [PERF] App initialization started at \(startTime)")
+        
         // 1. Initialize SubscriptionManager with timeout
+        let subStart = Date()
+        print("⏱️ [PERF] SubscriptionManager init starting...")
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 await self.subscriptionManager.initialize()
@@ -68,31 +75,39 @@ struct HealthGuideApp: App {
             await group.next()
             group.cancelAll()
         }
+        print("⏱️ [PERF] SubscriptionManager took: \(Date().timeIntervalSince(subStart))s")
         
         // 2. Configure AccessSessionManager
+        let accessStart = Date()
+        print("⏱️ [PERF] AccessSessionManager config starting...")
         await accessManager.configure()
+        print("⏱️ [PERF] AccessSessionManager took: \(Date().timeIntervalSince(accessStart))s")
         
         // 3. Setup NotificationManager (skip if causing issues)
-        #if DEBUG
-        print("🔔 Checking notification status...")
-        #endif
+        let notifStart = Date()
+        print("⏱️ [PERF] NotificationManager check starting...")
         // Simplified - just check without waiting
         Task {
             await NotificationManager.shared.checkNotificationStatus()
         }
+        print("⏱️ [PERF] NotificationManager task spawned: \(Date().timeIntervalSince(notifStart))s")
+        
+        // 4. Initialize MedicationNotificationScheduler
+        // Disabled automatic listening to prevent CPU issues
+        // _ = medicationScheduler
         #if DEBUG
-        print("✅ Notification check started")
+        print("💊 Medication notification scheduler ready (manual mode)")
         #endif
         
-        // 4. Mark as initialized immediately
+        // 5. Mark as initialized immediately
         await MainActor.run {
-            #if DEBUG
-            print("🎯 Marking app as initialized...")
-            #endif
+            let totalTime = Date().timeIntervalSince(startTime)
+            print("⏱️ [PERF] TOTAL initialization time: \(totalTime)s")
+            if totalTime > 2.0 {
+                print("⚠️ [PERF] WARNING: Initialization took longer than 2 seconds!")
+            }
             isInitialized = true
-            #if DEBUG
             print("✅ App initialization complete - loading UI")
-            #endif
         }
     }
 }

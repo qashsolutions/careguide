@@ -106,9 +106,14 @@ struct SkeletonCard: View {
             )
         }
         .onAppear {
-            withAnimation(Animation.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+            // OPTIMIZED: Reduced animation for energy efficiency
+            // Use longer duration and stop after a few cycles
+            withAnimation(Animation.easeInOut(duration: 2.0).repeatCount(5, autoreverses: true)) {
                 isAnimating = true
             }
+        }
+        .onDisappear {
+            isAnimating = false
         }
     }
 }
@@ -135,9 +140,16 @@ struct SkeletonBar: View {
             )
             .frame(width: width, height: height)
             .opacity(isAnimating ? 0.6 : 1.0)
-            .animation(Animation.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
+            // OPTIMIZED: Use finite animation instead of infinite loop
+            .animation(Animation.easeInOut(duration: 2.0).repeatCount(5, autoreverses: true), value: isAnimating)
             .onAppear {
-                isAnimating = true
+                // Delay animation start to reduce initial load
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isAnimating = true
+                }
+            }
+            .onDisappear {
+                isAnimating = false
             }
     }
 }

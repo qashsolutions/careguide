@@ -284,7 +284,9 @@ final class AccessSessionManager: ObservableObject {
             if let time = AccessSessionEntity.timeUntilNextAccess(for: userIdentifier, context: context) {
             timeUntilNextAccess = time
             
-            // Update every minute
+            // DISABLED - Timer causing constant UI refreshes and high energy usage
+            // Only update when user actively checks
+            /*
             accessCheckTimer?.invalidate()
             accessCheckTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
                 Task { @MainActor in
@@ -297,6 +299,7 @@ final class AccessSessionManager: ObservableObject {
                     }
                 }
             }
+            */
             }
         }
     }

@@ -235,7 +235,16 @@ struct DocumentsView: View {
             }
         }
         .onAppear {
+            print("🔍 DEBUG: DocumentsView appearing")
+            print("🔍 DEBUG: Categories count: \(categories.count)")
+            for cat in categories {
+                print("  - \(cat.name ?? "nil"): icon='\(cat.iconName ?? "nil")'")
+            }
             createDefaultCategoriesIfNeeded()
+            print("🔍 DEBUG: After createDefaultCategoriesIfNeeded")
+            for cat in categories {
+                print("  - \(cat.name ?? "nil"): icon='\(cat.iconName ?? "nil")'")
+            }
         }
     }
     
@@ -515,7 +524,7 @@ struct CategoryListRow: View {
                 
                 // Icon above category name (left-aligned)
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
-                    Image(systemName: (category.iconName?.isEmpty == false ? category.iconName : nil) ?? "folder.fill")
+                    Image(systemName: category.safeIconName)
                         .font(.system(size: 36))
                         .foregroundColor(category.categoryColor)
                     

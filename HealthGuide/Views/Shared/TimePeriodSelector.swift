@@ -121,10 +121,25 @@ struct TimePeriodSelector: View {
         selectedPeriods
             .sorted { $0.sortOrder < $1.sortOrder }
             .map { period in
-                let time = formatTime(for: period)
-                return "\(period.displayName) (\(time))"
+                let timeRange = getTimeRange(for: period)
+                return "\(period.displayName) (\(timeRange))"
             }
             .joined(separator: " & ")
+    }
+    
+    private func getTimeRange(for period: TimePeriod) -> String {
+        switch period {
+        case .breakfast:
+            return "6-8 AM"
+        case .lunch:
+            return "12-2 PM"
+        case .dinner:
+            return "6-8 PM"
+        case .bedtime:
+            return "9-11 PM"
+        case .custom:
+            return "Custom"
+        }
     }
     
     private func formatTime(for period: TimePeriod) -> String {

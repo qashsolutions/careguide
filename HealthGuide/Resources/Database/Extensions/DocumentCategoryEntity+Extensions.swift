@@ -55,15 +55,15 @@ extension DocumentCategoryEntity {
         
         var color: Color {
             switch self {
-            case .labResults: return .blue
-            case .prescriptions: return .green
-            case .insurance: return .orange
-            case .immunization: return .purple
-            case .imaging: return .indigo
-            case .emergency: return .red
-            case .dental: return .cyan
-            case .vision: return .mint
-            case .general: return .gray
+            case .labResults: return Color.blue
+            case .prescriptions: return Color.green
+            case .insurance: return Color.orange
+            case .immunization: return Color.purple
+            case .imaging: return Color.indigo
+            case .emergency: return Color.red
+            case .dental: return Color.cyan
+            case .vision: return Color.mint
+            case .general: return Color.gray
             }
         }
     }
@@ -157,6 +157,20 @@ extension DocumentCategoryEntity {
             return name
         }
         return "Unnamed Folder"
+    }
+    
+    /// Get safe icon name - never returns empty string
+    public var safeIconName: String {
+        if let icon = iconName, !icon.isEmpty {
+            return icon
+        }
+        // Try to match with default category
+        if let name = name,
+           let defaultCategory = DefaultCategory.allCases.first(where: { $0.rawValue == name }) {
+            return defaultCategory.iconName
+        }
+        // Default fallback
+        return DefaultIcons.general
     }
     
     /// Get color for category

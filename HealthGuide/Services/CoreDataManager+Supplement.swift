@@ -194,5 +194,5 @@ extension CoreDataManager {
 @available(iOS 18.0, *)
 extension Notification.Name {
     static let lowStorageWarning = Notification.Name("com.healthguide.lowStorageWarning")
-    static let coreDataDidSave = Notification.Name("com.healthguide.coreDataDidSave")
+    static let coreDataDidSave = Notification.Name("coreDataDidSave")
 }

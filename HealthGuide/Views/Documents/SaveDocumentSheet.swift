@@ -222,7 +222,7 @@ struct CategoryRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
                 // Icon on the right
-                Image(systemName: (category.iconName?.isEmpty == false ? category.iconName : nil) ?? "folder")
+                Image(systemName: category.safeIconName)
                     .font(.system(size: 28))
                     .foregroundColor(isSelected ? category.categoryColor : AppTheme.Colors.textSecondary.opacity(0.6))
                 

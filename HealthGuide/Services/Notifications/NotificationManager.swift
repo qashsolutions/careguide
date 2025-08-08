@@ -448,17 +448,49 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             case "TAKE_MEDICATION":
                 // Post notification to mark medication as taken
                 if let medicationId = medicationId {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("MarkMedicationTaken"),
-                        object: nil,
-                        userInfo: ["medicationId": medicationId]
-                    )
+                    // Check if this is a dose-based notification
+                    if let doseId = userInfo["doseId"] as? String,
+                       let doseUUID = UUID(uuidString: doseId) {
+                        // Mark the specific dose as taken
+                        Task { @MainActor in
+                            await MedicationNotificationScheduler.shared.markDoseAsTaken(doseUUID)
+                        }
+                    } else {
+                        // Legacy support for older notifications
+                        NotificationCenter.default.post(
+                            name: Notification.Name("MarkMedicationTaken"),
+                            object: nil,
+                            userInfo: ["medicationId": medicationId]
+                        )
+                    }
                 }
                 
             case "SNOOZE":
                 // Snooze medication reminder for 10 minutes
-                if let medicationId = medicationId,
+                if let doseId = userInfo["doseId"] as? String,
+                   let doseUUID = UUID(uuidString: doseId) {
+                    // Snooze the dose-based notification
+                    let snoozeTime = Calendar.current.date(byAdding: .minute, value: 10, to: Date())!
+                    let itemName = userInfo["itemName"] as? String ?? "Medication"
+                    let itemDosage = userInfo["itemDosage"] as? String ?? "Snoozed dose"
+                    let itemType = userInfo["itemType"] as? String ?? "medication"
+                    
+                    Task { @MainActor in
+                        await MedicationNotificationScheduler.shared.scheduleNotification(
+                            id: "\(doseId)_snooze_\(Date().timeIntervalSince1970)",
+                            title: "Snoozed Reminder",
+                            body: "Time to take \(itemName) - \(itemDosage)",
+                            time: snoozeTime,
+                            itemId: doseUUID,
+                            itemName: itemName,
+                            itemDosage: itemDosage,
+                            itemType: itemType,
+                            isMainNotification: true
+                        )
+                    }
+                } else if let medicationId = medicationId,
                    let medicationName = medicationName {
+                    // Legacy support
                     let snoozeTime = Calendar.current.date(byAdding: .minute, value: 10, to: Date())!
                     Task { @MainActor in
                         await NotificationManager.shared.scheduleMedicationReminder(

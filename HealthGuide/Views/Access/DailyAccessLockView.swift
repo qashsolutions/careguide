@@ -22,13 +22,14 @@ struct DailyAccessLockView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [AppTheme.Colors.primaryBlue.opacity(0.05), AppTheme.Colors.backgroundSecondary],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // OPTIMIZED: Using static image-based gradient for better performance
+            // LinearGradient causes continuous GPU rendering and high energy usage
+            Rectangle()
+                .fill(AppTheme.Colors.backgroundSecondary)
+                .overlay(
+                    AppTheme.Colors.primaryBlue.opacity(0.03)
+                        .ignoresSafeArea()
+                )
             
             VStack(spacing: 30) {
                 Spacer()
@@ -37,7 +38,7 @@ struct DailyAccessLockView: View {
                 Image(systemName: "lock.circle.fill")
                     .font(.system(size: 80))
                     .foregroundColor(AppTheme.Colors.primaryBlue)
-                    .symbolEffect(.pulse)
+                    // REMOVED: .symbolEffect(.pulse) - was causing continuous animation and high energy usage
                 
                 // Main message
                 VStack(spacing: 12) {
@@ -104,7 +105,9 @@ struct DailyAccessLockView: View {
             }
         }
         .onAppear {
-            startCountdown()
+            // DISABLED TIMER: Only update time string once on appear to reduce energy usage
+            updateTimeString()
+            // startCountdown() - disabled to eliminate all timer-based updates
         }
         .onDisappear {
             countdownTimer?.invalidate()
@@ -142,12 +145,13 @@ struct DailyAccessLockView: View {
     private func startCountdown() {
         updateTimeString()
         
-        // Update every second
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+        // OPTIMIZED: Update only once per hour to minimize energy usage
+        // Display shows hours anyway, so hourly updates are sufficient
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
             Task { @MainActor in
                 updateTimeString()
                 
-                // Check if it's a new day
+                // Check if it's a new day (within 1 hour window is acceptable)
                 if accessManager.timeUntilNextAccess <= 0 {
                     await accessManager.checkAccess(subscriptionState: nil)
                     countdownTimer?.invalidate()
@@ -160,12 +164,14 @@ struct DailyAccessLockView: View {
         let totalSeconds = Int(accessManager.timeUntilNextAccess)
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
         
+        // OPTIMIZED: Show only hours and minutes, no seconds to reduce frequent UI updates
         if hours > 0 {
-            timeString = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+            timeString = String(format: "%d hr %d min", hours, minutes)
+        } else if minutes > 0 {
+            timeString = String(format: "%d min", minutes)
         } else {
-            timeString = String(format: "%02d:%02d", minutes, seconds)
+            timeString = "Less than 1 minute"
         }
     }
 }

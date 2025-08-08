@@ -44,6 +44,13 @@ struct ConflictsView: View {
                 }
             }
         }
+        .onAppear {
+            print("🔍 DEBUG: ConflictsView appearing")
+            print("🔍 DEBUG: Conflicts count: \(conflicts.count)")
+            for conflict in conflicts {
+                print("  - Conflict: \(conflict.medicationA ?? "nil") + \(conflict.medicationB ?? "nil")")
+            }
+        }
     }
     
     @ViewBuilder
@@ -120,12 +127,20 @@ struct ConflictsView: View {
     private var filterMenu: some View {
         Menu {
             Button(action: { filterSeverity = nil }) {
-                Label("All Conflicts", systemImage: filterSeverity == nil ? "checkmark" : "")
+                if filterSeverity == nil {
+                    Label("All Conflicts", systemImage: "checkmark")
+                } else {
+                    Text("All Conflicts")
+                }
             }
             
             ForEach(ConflictSeverity.allCases, id: \.self) { severity in
                 Button(action: { filterSeverity = severity }) {
-                    Label(severity.displayName, systemImage: filterSeverity == severity ? "checkmark" : "")
+                    if filterSeverity == severity {
+                        Label(severity.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(severity.displayName)
+                    }
                 }
             }
         } label: {

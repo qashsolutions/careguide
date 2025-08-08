@@ -2,7 +2,7 @@
 //  DocumentCategoryEntity+CoreDataProperties.swift
 //  HealthGuide
 //
-//  Created by Ramana Chinthapenta on 8/3/25.
+//  Created by Ramana Chinthapenta on 8/7/25.
 //
 //
 
@@ -16,11 +16,11 @@ extension DocumentCategoryEntity {
         return NSFetchRequest<DocumentCategoryEntity>(entityName: "DocumentCategoryEntity")
     }
 
-    @NSManaged public var id: UUID?
-    @NSManaged public var name: String?
-    @NSManaged public var iconName: String?
     @NSManaged public var createdAt: Date?
     @NSManaged public var documentCount: Int32
+    @NSManaged public var iconName: String?
+    @NSManaged public var id: UUID?
+    @NSManaged public var name: String?
     @NSManaged public var documents: NSSet?
 
 }

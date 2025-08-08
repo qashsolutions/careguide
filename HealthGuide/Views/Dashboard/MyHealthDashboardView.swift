@@ -53,17 +53,28 @@ struct MyHealthDashboardView: View {
                     }
             }
             .refreshable {
+                // Debounce refresh to prevent rapid reloads
+                try? await Task.sleep(for: .seconds(0.5))
                 await viewModel.loadData()
             }
             .task {
+                print("🔍 DEBUG: MyHealthDashboardView loading data...")
                 await viewModel.loadData()
                 selectedPeriods = [viewModel.currentPeriod]
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .coreDataDidSave)) { _ in
-                Task {
-                    await viewModel.loadData()
+                print("🔍 DEBUG: Loaded \(viewModel.allItems.count) items")
+                for item in viewModel.allItems {
+                    let iconName = item.item.itemType.iconName
+                    if iconName.isEmpty {
+                        print("  ❌ Empty icon for: \(item.item.name)")
+                    }
                 }
             }
+            // Disabled - causing excessive refreshes and high energy usage
+            // .onReceive(NotificationCenter.default.publisher(for: .coreDataDidSave)) { _ in
+            //     Task {
+            //         await viewModel.loadData()
+            //     }
+            // }
             .alert("Take Medication", isPresented: $showTakeConfirmation) {
                 Button("Yes", role: .none) {
                     if let pending = pendingDoseToMark {
@@ -152,7 +163,7 @@ struct MyHealthDashboardView: View {
                         .font(.monaco(AppTheme.ElderTypography.body))
                         .fontWeight(isCurrentPeriod ? .semibold : .regular)
                 } icon: {
-                    Image(systemName: period.iconName)
+                    Image(systemName: period.iconName.isEmpty ? "clock" : period.iconName)
                         .font(.system(size: 20))
                 }
                 .foregroundColor(isCurrentPeriod ? Color.blue : AppTheme.Colors.textPrimary)
@@ -203,8 +214,8 @@ struct MyHealthDashboardView: View {
     
     private func medicationRow(itemData: (item: any HealthItem, dose: ScheduledDose?), period: TimePeriod) -> some View {
         HStack(spacing: AppTheme.Spacing.medium) {
-            // Icon
-            Image(systemName: itemData.item.itemType.iconName)
+            // Icon (with fallback for empty names)
+            Image(systemName: itemData.item.itemType.iconName.isEmpty ? "questionmark.circle" : itemData.item.itemType.iconName)
                 .font(.system(size: 24))
                 .foregroundColor(itemData.item.itemType.color)
                 .frame(width: 36)

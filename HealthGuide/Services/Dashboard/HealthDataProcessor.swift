@@ -32,9 +32,10 @@ actor HealthDataProcessor {
         // Wait for all data to be fetched
         let (medicationList, supplementList, dietItemList, doseRecords) = try await (medications, supplements, dietItems, allDoseRecords)
         
-        #if DEBUG
-        print("🏥 HealthDataProcessor: Fetched \(medicationList.count) medications, \(supplementList.count) supplements, \(dietItemList.count) diet items, \(doseRecords.count) doses")
-        #endif
+        // Disabled debug logging to reduce overhead
+        // #if DEBUG
+        // print("🏥 HealthDataProcessor: Fetched \(medicationList.count) medications, \(supplementList.count) supplements, \(dietItemList.count) diet items, \(doseRecords.count) doses")
+        // #endif
         
         // Process each type of health item with their persisted doses
         var allItems: [(item: any HealthItem, dose: ScheduledDose?)] = []

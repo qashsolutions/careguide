@@ -186,7 +186,7 @@ struct CategoryDocumentsView: View {
     
     private var categoryHeader: some View {
         HStack {
-            Image(systemName: (category.iconName?.isEmpty == false ? category.iconName : nil) ?? "folder.fill")
+            Image(systemName: category.safeIconName)
                 .font(.system(size: 36))
                 .foregroundColor(category.categoryColor)
             
@@ -212,7 +212,7 @@ struct CategoryDocumentsView: View {
         VStack(spacing: AppTheme.Spacing.xxLarge) {
             Spacer()
             
-            Image(systemName: (category.iconName?.isEmpty == false ? category.iconName : nil) ?? "folder.badge.plus")
+            Image(systemName: category.safeIconName)
                 .font(.system(size: 80))
                 .foregroundColor(category.categoryColor.opacity(0.6))
             

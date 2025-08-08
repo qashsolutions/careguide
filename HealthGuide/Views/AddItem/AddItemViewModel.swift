@@ -96,6 +96,12 @@ final class AddItemViewModel: ObservableObject {
             )
             try await coreDataManager.saveMedication(medication)
             
+            // Schedule notifications in background task
+            // This prevents blocking the main thread and avoids dispatch assertions
+            Task {
+                await MedicationNotificationScheduler.shared.scheduleNotificationsForNewMedication(medication.id)
+            }
+            
         case .supplement:
             let supplement = Supplement(
                 name: name,
@@ -104,6 +110,12 @@ final class AddItemViewModel: ObservableObject {
                 schedule: schedule
             )
             try await coreDataManager.saveSupplement(supplement)
+            
+            // Schedule notifications in background task
+            // This prevents blocking the main thread and avoids dispatch assertions
+            Task {
+                await MedicationNotificationScheduler.shared.scheduleNotificationsForNewSupplement(supplement.id)
+            }
             
         case .diet:
             let diet = Diet(
