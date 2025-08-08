@@ -515,21 +515,16 @@ struct CategoryListRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: AppTheme.Spacing.large) {
-                // Number at the beginning
-                Text("\(number)")
-                    .font(.monaco(AppTheme.ElderTypography.title))
-                    .fontWeight(.bold)
-                    .foregroundColor(AppTheme.Colors.textSecondary)
+                // Icon where number used to be
+                Image(systemName: category.safeIconName)
+                    .font(.system(size: 32))
+                    .foregroundColor(category.categoryColor)
                     .frame(width: 36)
                 
-                // Icon above category name (left-aligned)
+                // Category name and details
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
-                    Image(systemName: category.safeIconName)
-                        .font(.system(size: 36))
-                        .foregroundColor(category.categoryColor)
-                    
                     Text(category.displayName)
-                        .font(.monaco(AppTheme.ElderTypography.headline))
+                        .font(.monaco(AppTheme.ElderTypography.headline - 2))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                     
@@ -537,14 +532,14 @@ struct CategoryListRow: View {
                         // Document count
                         HStack(spacing: AppTheme.Spacing.xSmall) {
                             Image(systemName: "doc.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: 12))
                             Text("\(category.documentCount)")
-                                .font(.monaco(AppTheme.ElderTypography.caption))
+                                .font(.monaco(AppTheme.ElderTypography.caption - 2))
                         }
                         
                         // Size
                         Text(category.formattedTotalSize)
-                            .font(.monaco(AppTheme.ElderTypography.caption))
+                            .font(.monaco(AppTheme.ElderTypography.caption - 2))
                     }
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 }
@@ -553,7 +548,7 @@ struct CategoryListRow: View {
                 
                 // Chevron
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 20))
+                    .font(.system(size: 18))
                     .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
             }
             .padding(.horizontal, AppTheme.Spacing.large)
