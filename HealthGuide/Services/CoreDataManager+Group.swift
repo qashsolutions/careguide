@@ -45,7 +45,11 @@ extension CoreDataManager {
         
         // Post notification on main queue to avoid threading issues
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for group changes only
+            NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
     
@@ -81,7 +85,11 @@ extension CoreDataManager {
         
         // Post notification on main queue to avoid threading issues
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for group changes only
+            NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
     
@@ -130,7 +138,11 @@ extension CoreDataManager {
         }
         
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for group changes only
+            NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
     
@@ -213,7 +225,11 @@ extension CoreDataManager {
         
         // Post notification on main queue to avoid threading issues
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for group changes only
+            NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
     

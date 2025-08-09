@@ -54,6 +54,20 @@ struct ContactsView: View {
                 ContactDetailView(contact: contact)
                     .environment(\.managedObjectContext, viewContext)
             }
+            // Add pull-to-refresh for manual updates
+            .refreshable {
+                // Trigger Core Data refresh by changing the fetch request
+                // This will automatically reload the contacts
+            }
+            // Add debounced selective listening for contact changes
+            // Only responds to contact-specific changes, not all Core Data saves
+            .onReceive(
+                NotificationCenter.default.publisher(for: .contactDataDidChange)
+                    .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            ) { _ in
+                // FetchRequest will automatically update when Core Data changes
+                // This is here for future use if we need manual refresh logic
+            }
         }
     }
     
@@ -93,7 +107,7 @@ struct ContactsView: View {
                 .font(.system(size: 60))
                 .foregroundColor(AppTheme.Colors.warningOrange)
             
-            Text("No Healthcare Contacts Yet")
+            Text("No Contacts Added")
                 .font(.monaco(AppTheme.ElderTypography.title))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)

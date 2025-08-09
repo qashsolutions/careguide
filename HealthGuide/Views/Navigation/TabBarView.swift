@@ -46,7 +46,7 @@ struct TabBarView: View {
                 Label(
                     title: { Text(AppStrings.TabBar.groups) },
                     icon: { 
-                        Image(systemName: selectedTab == 1 ? "person.fill" : "person")
+                        Image(systemName: selectedTab == 1 ? "person.3.fill" : "person.3")
                             .font(.system(size: AppTheme.Dimensions.tabIconSize))
                     }
                 )
@@ -62,7 +62,7 @@ struct TabBarView: View {
                 Label(
                     title: { Text(AppStrings.TabBar.contacts) },
                     icon: { 
-                        Image(systemName: selectedTab == 2 ? "phone.circle.fill" : "phone.circle")
+                        Image(systemName: selectedTab == 2 ? "person.crop.circle.badge.checkmark.fill" : "person.crop.circle.badge.checkmark")
                             .font(.system(size: AppTheme.Dimensions.tabIconSize))
                     }
                 )
@@ -85,14 +85,14 @@ struct TabBarView: View {
             }
             .tag(3)
             
-            // Folder Tab
+            // Vault Tab
             NavigationStack {
                 DocumentsView()
-                    .navigationTitle("Folder")
+                    .navigationTitle("Vault")
             }
             .tabItem {
                 Label(
-                    title: { Text("Folder") },
+                    title: { Text("Vault") },
                     icon: { 
                         Image(systemName: selectedTab == 4 ? "folder.fill" : "folder")
                             .font(.system(size: AppTheme.Dimensions.tabIconSize))

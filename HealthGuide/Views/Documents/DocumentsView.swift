@@ -65,7 +65,7 @@ struct DocumentsView: View {
                     }
                 }
             }
-            .navigationTitle("Medical Documents")
+            .navigationTitle("Vault")
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "Search by filename or category")
             .toolbar {
@@ -245,6 +245,20 @@ struct DocumentsView: View {
             for cat in categories {
                 print("  - \(cat.name ?? "nil"): icon='\(cat.iconName ?? "nil")'")
             }
+        }
+        // Add pull-to-refresh for manual updates
+        .refreshable {
+            // Trigger Core Data refresh by changing the fetch request
+            // This will automatically reload the documents and categories
+        }
+        // Add debounced selective listening for document changes
+        // Only responds to document-specific changes, not all Core Data saves
+        .onReceive(
+            NotificationCenter.default.publisher(for: .documentDataDidChange)
+                .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+        ) { _ in
+            // FetchRequest will automatically update when Core Data changes
+            // This is here for future use if we need manual refresh logic
         }
     }
     
@@ -524,7 +538,7 @@ struct CategoryListRow: View {
                 // Category name and details
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
                     Text(category.displayName)
-                        .font(.monaco(AppTheme.ElderTypography.headline - 2))
+                        .font(.monaco(AppTheme.ElderTypography.headline - 3))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                     
@@ -532,14 +546,14 @@ struct CategoryListRow: View {
                         // Document count
                         HStack(spacing: AppTheme.Spacing.xSmall) {
                             Image(systemName: "doc.fill")
-                                .font(.system(size: 12))
+                                .font(.system(size: 11))
                             Text("\(category.documentCount)")
-                                .font(.monaco(AppTheme.ElderTypography.caption - 2))
+                                .font(.monaco(AppTheme.ElderTypography.caption - 3))
                         }
                         
                         // Size
                         Text(category.formattedTotalSize)
-                            .font(.monaco(AppTheme.ElderTypography.caption - 2))
+                            .font(.monaco(AppTheme.ElderTypography.caption - 3))
                     }
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 }

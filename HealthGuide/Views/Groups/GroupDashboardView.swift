@@ -61,6 +61,9 @@ struct GroupDashboardView: View {
                     await viewModel.loadGroups()
                 }
             }
+            // COMMENTED OUT: Old implementation causing 100% CPU usage
+            // This was listening to ALL Core Data saves across the entire app
+            /*
             .onReceive(NotificationCenter.default.publisher(for: .coreDataDidSave)
                 .receive(on: DispatchQueue.main)) { _ in
                 Task {
@@ -71,6 +74,27 @@ struct GroupDashboardView: View {
                         activeGroupID = firstGroup.id?.uuidString ?? ""
                     }
                 }
+            }
+            */
+            
+            // NEW: Debounced selective listening - only responds to group-specific changes
+            // Prevents CPU overload by batching updates (max 2 per second)
+            .onReceive(
+                NotificationCenter.default.publisher(for: .groupDataDidChange)
+                    .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            ) { _ in
+                Task {
+                    await viewModel.loadGroups()
+                    
+                    // If no active group, set the first one as active
+                    if activeGroupID.isEmpty, let firstGroup = viewModel.groups.first {
+                        activeGroupID = firstGroup.id?.uuidString ?? ""
+                    }
+                }
+            }
+            // Add pull-to-refresh for immediate manual updates
+            .refreshable {
+                await viewModel.loadGroups()
             }
         }
     }
@@ -156,6 +180,12 @@ struct GroupDashboardView: View {
                         .foregroundColor(AppTheme.Colors.primaryBlue)
                         .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
                 }
+                
+                Text("Only one active group at a time. Creating a new group will disable any existing group.")
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, AppTheme.Spacing.small)
             }
             .padding(.horizontal, AppTheme.Spacing.xxLarge)
             

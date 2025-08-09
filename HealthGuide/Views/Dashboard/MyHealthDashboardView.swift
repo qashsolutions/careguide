@@ -290,11 +290,11 @@ struct MyHealthDashboardView: View {
         VStack(spacing: AppTheme.Spacing.xxLarge) {
             Spacer()
             
-            Image(systemName: "brain.head.profile")
+            Image(systemName: "heart.text.clipboard")
                 .font(.system(size: 80))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
             
-            Text("Smart Health Management")
+            Text("Care Management")
                 .font(.monaco(AppTheme.ElderTypography.title))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)

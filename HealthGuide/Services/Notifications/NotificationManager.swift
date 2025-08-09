@@ -544,4 +544,12 @@ extension Notification.Name {
     static let showSubscriptionView = Notification.Name("ShowSubscriptionView")
     static let showMedicationView = Notification.Name("ShowMedicationView")
     static let markMedicationTaken = Notification.Name("MarkMedicationTaken")
+    
+    // Selective data change notifications for debounced updates
+    static let groupDataDidChange = Notification.Name("groupDataDidChange")
+    static let medicationDataDidChange = Notification.Name("medicationDataDidChange")
+    static let supplementDataDidChange = Notification.Name("supplementDataDidChange")
+    static let dietDataDidChange = Notification.Name("dietDataDidChange")
+    static let contactDataDidChange = Notification.Name("contactDataDidChange")
+    static let documentDataDidChange = Notification.Name("documentDataDidChange")
 }

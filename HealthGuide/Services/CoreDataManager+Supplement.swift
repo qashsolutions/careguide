@@ -42,7 +42,11 @@ extension CoreDataManager {
         }
         
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for supplement changes only
+            NotificationCenter.default.post(name: .supplementDataDidChange, object: nil)
         }
     }
     
@@ -81,7 +85,11 @@ extension CoreDataManager {
         }
         
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for supplement changes only
+            NotificationCenter.default.post(name: .supplementDataDidChange, object: nil)
         }
     }
     
@@ -112,7 +120,11 @@ extension CoreDataManager {
         }
         
         await MainActor.run {
-            NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            // COMMENTED OUT: Old generic notification causing CPU issues
+            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            
+            // NEW: Post selective notification for supplement changes only
+            NotificationCenter.default.post(name: .supplementDataDidChange, object: nil)
         }
     }
     
