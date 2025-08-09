@@ -44,10 +44,22 @@ struct GroupDashboardView: View {
             .sheet(isPresented: $showCreateGroup) {
                 InviteCodeView(mode: .create)
                     .environment(\.managedObjectContext, viewContext)
+                    .onDisappear {
+                        // Refresh groups only when create modal closes
+                        Task {
+                            await viewModel.loadGroups()
+                        }
+                    }
             }
             .sheet(isPresented: $showJoinGroup) {
                 InviteCodeView(mode: .join)
                     .environment(\.managedObjectContext, viewContext)
+                    .onDisappear {
+                        // Refresh groups only when join modal closes
+                        Task {
+                            await viewModel.loadGroups()
+                        }
+                    }
             }
             .sheet(item: $selectedGroup) { group in
                 GroupMemberListView(group: group)
@@ -55,11 +67,6 @@ struct GroupDashboardView: View {
             }
             .task {
                 await viewModel.loadGroups()
-            }
-            .onAppear {
-                Task {
-                    await viewModel.loadGroups()
-                }
             }
             // COMMENTED OUT: Old implementation causing 100% CPU usage
             // This was listening to ALL Core Data saves across the entire app
@@ -77,8 +84,9 @@ struct GroupDashboardView: View {
             }
             */
             
-            // NEW: Debounced selective listening - only responds to group-specific changes
-            // Prevents CPU overload by batching updates (max 2 per second)
+            // DISABLED: Even debounced listening can cause energy drain
+            // Only load groups on appear and via pull-to-refresh
+            /*
             .onReceive(
                 NotificationCenter.default.publisher(for: .groupDataDidChange)
                     .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
@@ -92,6 +100,7 @@ struct GroupDashboardView: View {
                     }
                 }
             }
+            */
             // Add pull-to-refresh for immediate manual updates
             .refreshable {
                 await viewModel.loadGroups()
