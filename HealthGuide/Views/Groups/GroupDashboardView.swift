@@ -152,7 +152,7 @@ struct GroupDashboardView: View {
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)
             
-            Text("Create or join a group to share medication schedules with family")
+            Text("Create/Join a group")
                 .font(.monaco(AppTheme.ElderTypography.body))
                 .foregroundColor(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -181,8 +181,8 @@ struct GroupDashboardView: View {
                         .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
                 }
                 
-                Text("Only one active group at a time. Creating a new group will disable any existing group.")
-                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                Text("Only one active group at a time")
+                    .font(.monaco(AppTheme.ElderTypography.body))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.top, AppTheme.Spacing.small)
