@@ -42,24 +42,22 @@ struct GroupDashboardView: View {
                 }
             }
             .sheet(isPresented: $showCreateGroup) {
-                InviteCodeView(mode: .create)
-                    .environment(\.managedObjectContext, viewContext)
-                    .onDisappear {
-                        // Refresh groups only when create modal closes
-                        Task {
-                            await viewModel.loadGroups()
-                        }
+                InviteCodeView(mode: .create, onSuccess: {
+                    // Only refresh when group is actually created
+                    Task {
+                        await viewModel.loadGroups()
                     }
+                })
+                .environment(\.managedObjectContext, viewContext)
             }
             .sheet(isPresented: $showJoinGroup) {
-                InviteCodeView(mode: .join)
-                    .environment(\.managedObjectContext, viewContext)
-                    .onDisappear {
-                        // Refresh groups only when join modal closes
-                        Task {
-                            await viewModel.loadGroups()
-                        }
+                InviteCodeView(mode: .join, onSuccess: {
+                    // Only refresh when group is actually joined
+                    Task {
+                        await viewModel.loadGroups()
                     }
+                })
+                .environment(\.managedObjectContext, viewContext)
             }
             .sheet(item: $selectedGroup) { group in
                 GroupMemberListView(group: group)

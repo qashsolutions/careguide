@@ -23,8 +23,8 @@ struct ContentView: View {
     
     var body: some View {
         Group {
-            // Check access and authentication status
-            if !accessManager.isCheckingAccess && !accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
+            // Simplified check - reduce re-renders
+            if !accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
                 DailyAccessLockView()
                     .onAppear {
                         print("⏱️ [VIEW] DailyAccessLockView appeared")

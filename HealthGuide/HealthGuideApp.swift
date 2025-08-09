@@ -58,24 +58,13 @@ struct HealthGuideApp: App {
         let startTime = Date()
         print("⏱️ [PERF] App initialization started at \(startTime)")
         
-        // 1. Initialize SubscriptionManager with timeout
+        // 1. Skip SubscriptionManager init - let it initialize lazily when needed
         let subStart = Date()
-        print("⏱️ [PERF] SubscriptionManager init starting...")
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                await self.subscriptionManager.initialize()
-            }
-            
-            // Add timeout
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 second timeout
-            }
-            
-            // Wait for first to complete
-            await group.next()
-            group.cancelAll()
-        }
-        print("⏱️ [PERF] SubscriptionManager took: \(Date().timeIntervalSince(subStart))s")
+        print("⏱️ [PERF] SubscriptionManager init SKIPPED for faster launch")
+        // Task {
+        //     await self.subscriptionManager.initialize()
+        // }
+        print("⏱️ [PERF] SubscriptionManager deferred: \(Date().timeIntervalSince(subStart))s")
         
         // 2. Configure AccessSessionManager
         let accessStart = Date()
@@ -83,14 +72,14 @@ struct HealthGuideApp: App {
         await accessManager.configure()
         print("⏱️ [PERF] AccessSessionManager took: \(Date().timeIntervalSince(accessStart))s")
         
-        // 3. Setup NotificationManager (skip if causing issues)
+        // 3. Skip NotificationManager check - defer until user needs notifications
         let notifStart = Date()
-        print("⏱️ [PERF] NotificationManager check starting...")
-        // Simplified - just check without waiting
-        Task {
-            await NotificationManager.shared.checkNotificationStatus()
-        }
-        print("⏱️ [PERF] NotificationManager task spawned: \(Date().timeIntervalSince(notifStart))s")
+        print("⏱️ [PERF] NotificationManager check SKIPPED for faster launch")
+        // Will check when user actually accesses notification features
+        // Task {
+        //     await NotificationManager.shared.checkNotificationStatus()
+        // }
+        print("⏱️ [PERF] NotificationManager deferred: \(Date().timeIntervalSince(notifStart))s")
         
         // 4. Initialize MedicationNotificationScheduler
         // Disabled automatic listening to prevent CPU issues
@@ -124,8 +113,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Setup notification delegate immediately
         NotificationManager.shared.setupDelegate()
         
-        // Start memory monitoring
-        _ = MemoryMonitor.shared
+        // Defer memory monitoring until after launch
+        // _ = MemoryMonitor.shared
+        print("📊 MemoryMonitor: Deferred initialization")
         
         return true
     }

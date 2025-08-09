@@ -20,9 +20,11 @@ struct InviteCodeView: View {
     @State private var existingGroupToDelete: CareGroup?
     
     let mode: GroupMode
+    let onSuccess: (() -> Void)?
     
-    init(mode: GroupMode) {
+    init(mode: GroupMode, onSuccess: (() -> Void)? = nil) {
         self.mode = mode
+        self.onSuccess = onSuccess
         self._viewModel = StateObject(wrappedValue: InviteCodeViewModel(mode: mode))
     }
     
@@ -73,6 +75,9 @@ struct InviteCodeView: View {
                     if let groupID = viewModel.createdGroup?.id.uuidString {
                         activeGroupID = groupID
                     }
+                    
+                    // Call success callback before dismissing
+                    onSuccess?()
                     
                     // Dismiss after a short delay to show success
                     Task {

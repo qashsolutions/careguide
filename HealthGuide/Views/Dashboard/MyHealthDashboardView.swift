@@ -47,6 +47,8 @@ struct MyHealthDashboardView: View {
             .sheet(isPresented: $showAddItem) {
                 AddItemView()
                     .onDisappear {
+                        // Refresh data when sheet closes
+                        // TODO: Optimize to only refresh when item actually added
                         Task {
                             await viewModel.loadData()
                         }
@@ -151,9 +153,25 @@ struct MyHealthDashboardView: View {
         }
     }
     
+    
+    private func shouldHighlightPeriod(_ period: TimePeriod) -> Bool {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch period {
+        case .breakfast:
+            return hour >= 6 && hour < 11
+        case .lunch:
+            return hour >= 11 && hour < 18
+        case .dinner:
+            return hour >= 18 || hour < 6
+        default:
+            return false
+        }
+    }
+    
     private func timePeriodSection(for period: TimePeriod) -> some View {
         let items = viewModel.itemsForPeriod(period)
         let isCurrentPeriod = period == viewModel.currentPeriod
+        let shouldHighlight = shouldHighlightPeriod(period)
         
         return VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
             // Period header
@@ -209,6 +227,11 @@ struct MyHealthDashboardView: View {
             RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
                 .fill(Color.white)
                 .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
+        )
+        .overlay(
+            shouldHighlight ? 
+            RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
+                .stroke(AppTheme.Colors.primaryBlue, lineWidth: 2) : nil
         )
     }
     
