@@ -53,6 +53,7 @@ extension CoreDataManager {
             entity.audioFileURL = memo.audioFileURL
             entity.duration = memo.duration
             entity.recordedAt = memo.recordedAt
+            entity.title = memo.title
             entity.transcription = memo.transcription
             entity.priority = memo.priority.rawValue
             
@@ -93,6 +94,7 @@ extension CoreDataManager {
                     audioFileURL: audioFileURL,
                     duration: entity.duration,
                     recordedAt: entity.recordedAt ?? Date(),
+                    title: entity.title,
                     transcription: entity.transcription,
                     relatedMedicationIds: medicationIds,
                     priority: MemoPriority(rawValue: entity.priority ?? "Medium") ?? .medium

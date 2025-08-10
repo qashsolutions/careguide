@@ -19,6 +19,9 @@ struct CareMemosView: View {
     @State private var showingDeleteAlert = false
     @State private var memoToDelete: CareMemo?
     @State private var recordingStartTime: Date?
+    @State private var showingTitleDialog = false
+    @State private var memoTitle = ""
+    @State private var pendingRecordingResult: (url: URL, duration: TimeInterval)?
     
     var body: some View {
         NavigationStack {
@@ -80,6 +83,24 @@ struct CareMemosView: View {
             } message: {
                 Text("This audio memo will be permanently deleted.")
             }
+            .alert("Add a quick note?", isPresented: $showingTitleDialog) {
+                TextField("e.g., Morning medicine", text: $memoTitle)
+                    .onChange(of: memoTitle) { _, newValue in
+                        // Limit to 3 words
+                        let words = newValue.split(separator: " ")
+                        if words.count > 3 {
+                            memoTitle = words.prefix(3).joined(separator: " ")
+                        }
+                    }
+                Button("Save with note") {
+                    saveMemoWithTitle(title: memoTitle.isEmpty ? nil : memoTitle)
+                }
+                Button("Skip", role: .cancel) {
+                    saveMemoWithTitle(title: nil)
+                }
+            } message: {
+                Text("Optional: Add up to 3 words to identify this memo")
+            }
             .onDisappear {
                 // Clean up audio resources when leaving the view
                 if audioManager.isRecording {
@@ -102,15 +123,10 @@ struct CareMemosView: View {
                     audioManager.isRecording = false
                     
                     if let url = result.url {
-                        let memo = CareMemo(
-                            audioFileURL: url.absoluteString,
-                            duration: result.duration,
-                            recordedAt: recordingStartTime ?? Date()
-                        )
-                        
-                        Task {
-                            await viewModel.saveMemo(memo)
-                        }
+                        // Store the result and show title dialog
+                        pendingRecordingResult = (url: url, duration: result.duration)
+                        memoTitle = ""
+                        showingTitleDialog = true
                     }
                     
                     // Clear the result after handling
@@ -275,19 +291,10 @@ struct CareMemosView: View {
         let result = audioManager.stopRecording()
         
         if let url = result.url {
-            // Use the duration returned from stopRecording
-            let duration = result.duration
-            
-            let memo = CareMemo(
-                audioFileURL: url.absoluteString,
-                duration: duration,
-                recordedAt: recordingStartTime ?? Date()
-            )
-            
-            Task {
-                print("🧵 [CareMemosView] About to save memo - Actor: Task context")
-                await viewModel.saveMemo(memo)
-            }
+            // Store the result and show title dialog
+            pendingRecordingResult = (url: url, duration: result.duration)
+            memoTitle = ""
+            showingTitleDialog = true
         }
         // AudioManager sets isRecording = false internally
     }
@@ -325,6 +332,26 @@ struct CareMemosView: View {
             return formatter.string(from: date)
         }
     }
+    
+    // MARK: - Save Memo with Title
+    private func saveMemoWithTitle(title: String?) {
+        guard let pending = pendingRecordingResult else { return }
+        
+        let memo = CareMemo(
+            audioFileURL: pending.url.absoluteString,
+            duration: pending.duration,
+            recordedAt: recordingStartTime ?? Date(),
+            title: title
+        )
+        
+        Task {
+            await viewModel.saveMemo(memo)
+        }
+        
+        // Clear pending result
+        pendingRecordingResult = nil
+        recordingStartTime = nil
+    }
 }
 
 // MARK: - Memo Row
@@ -346,12 +373,20 @@ struct MemoRow: View {
             
             // Memo info
             VStack(alignment: .leading, spacing: 4) {
-                // Date and Time (e.g., "Dec 10, 8:21 PM")
+                // Title if available (e.g., "Blood pressure check")
+                if let title = memo.title, !title.isEmpty {
+                    Text(title)
+                        .font(.monaco(AppTheme.ElderTypography.headline))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                }
+                
+                // Date and Time (e.g., "8:21 PM")
                 Text(formatDateTime())
                     .font(.monaco(AppTheme.ElderTypography.body))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .foregroundColor(memo.title == nil ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
                 
-                // Duration (e.g., "45 seconds" or "1:23")
+                // Duration (e.g., "0:45")
                 Text(memo.formattedDuration)
                     .font(.monaco(AppTheme.ElderTypography.footnote))
                     .foregroundColor(AppTheme.Colors.textSecondary)

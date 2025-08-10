@@ -15,6 +15,7 @@ struct CareMemo: Identifiable, Sendable, Equatable {
     let audioFileURL: String
     let duration: TimeInterval
     let recordedAt: Date
+    let title: String?
     let transcription: String?
     let relatedMedicationIds: [UUID]
     let priority: MemoPriority
@@ -24,6 +25,7 @@ struct CareMemo: Identifiable, Sendable, Equatable {
         audioFileURL: String,
         duration: TimeInterval,
         recordedAt: Date = Date(),
+        title: String? = nil,
         transcription: String? = nil,
         relatedMedicationIds: [UUID] = [],
         priority: MemoPriority = .medium
@@ -32,6 +34,7 @@ struct CareMemo: Identifiable, Sendable, Equatable {
         self.audioFileURL = audioFileURL
         self.duration = duration
         self.recordedAt = recordedAt
+        self.title = title
         self.transcription = transcription
         self.relatedMedicationIds = relatedMedicationIds
         self.priority = priority

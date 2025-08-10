@@ -2,7 +2,7 @@
 //  CareMemoEntity+CoreDataProperties.swift
 //  HealthGuide
 //
-//  Created by Ramana Chinthapenta on 8/9/25.
+//  Created by Ramana Chinthapenta on 8/10/25.
 //
 //
 
@@ -23,6 +23,7 @@ extension CareMemoEntity {
     @NSManaged public var transcription: String?
     @NSManaged public var priority: String?
     @NSManaged public var relatedMedicationIds: Data?
+    @NSManaged public var title: String?
 
 }
 

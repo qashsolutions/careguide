@@ -42,6 +42,7 @@
         <attribute name="priority" optional="YES" attributeType="String"/>
         <attribute name="recordedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="relatedMedicationIds" optional="YES" attributeType="Binary"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
         <attribute name="transcription" optional="YES" attributeType="String"/>
     </entity>
     <entity name="ConflictEntity" representedClassName="ConflictEntity" syncable="YES">
