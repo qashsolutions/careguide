@@ -141,20 +141,42 @@ struct GroupDashboardView: View {
     }
     
     private var groupsList: some View {
-        ScrollView {
-            VStack(spacing: AppTheme.Spacing.medium) {
-                ForEach(viewModel.groups) { group in
-                    let isActive = group.id?.uuidString == activeGroupID
-                    
-                    GroupCardView(
-                        group: group,
-                        memberCount: group.members?.count ?? 0,
-                        isActive: isActive,
-                        onTap: { handleGroupTap(group, isActive: isActive) }
-                    )
+        VStack {
+            ScrollView {
+                VStack(spacing: AppTheme.Spacing.medium) {
+                    ForEach(viewModel.groups) { group in
+                        let isActive = group.id?.uuidString == activeGroupID
+                        
+                        GroupCardView(
+                            group: group,
+                            memberCount: group.members?.count ?? 0,
+                            isActive: isActive,
+                            onTap: { handleGroupTap(group, isActive: isActive) }
+                        )
+                    }
                 }
+                .padding(AppTheme.Spacing.screenPadding)
             }
-            .padding(AppTheme.Spacing.screenPadding)
+            
+            Spacer()
+            
+            // Informational text at bottom
+            VStack(spacing: AppTheme.Spacing.xSmall) {
+                Text("Max 3 members in each group")
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                
+                Text("Another member can also be made Admin")
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                
+                Text("To join, share your passcode or the QR code with them")
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, AppTheme.Spacing.screenPadding)
+            .padding(.bottom, AppTheme.Spacing.large)
         }
     }
     
@@ -269,15 +291,22 @@ struct GroupCardView: View {
                     Spacer()
                     
                     if isAdmin {
-                        HStack(spacing: AppTheme.Spacing.small) {
+                        HStack(spacing: AppTheme.Spacing.medium) {
+                            // Share button with better visual prominence
                             if isActive && group.inviteCode != nil {
                                 Button(action: { showShareView = true }) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: AppTheme.ElderTypography.footnote))
-                                        .foregroundColor(AppTheme.Colors.primaryBlue)
-                                        .frame(width: 36, height: 36)
-                                        .background(AppTheme.Colors.primaryBlue.opacity(0.1))
-                                        .clipShape(Circle())
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.system(size: 18, weight: .medium))
+                                        Text("Share")
+                                            .font(.monaco(AppTheme.ElderTypography.footnote))
+                                            .fontWeight(.medium)
+                                    }
+                                    .foregroundColor(AppTheme.Colors.primaryBlue)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(AppTheme.Colors.primaryBlue.opacity(0.1))
+                                    .cornerRadius(20)
                                 }
                                 .buttonStyle(.plain)
                             }
