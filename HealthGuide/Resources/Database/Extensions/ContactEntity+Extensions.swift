@@ -41,23 +41,18 @@ extension ContactEntity {
             }
         }
         
-        /// Color for UI display
-        var colorName: String {
-            switch self {
-            case .doctor: return "blue"
-            case .pharmacy: return "green"
-            case .caregiver: return "purple"
-            case .nurse: return "pink"
-            case .therapist: return "orange"
-            case .specialist: return "indigo"
-            case .emergency: return "red"
-            case .other: return "gray"
-            }
-        }
-        
-        /// SwiftUI Color
+        /// SwiftUI Color - Using system colors for compatibility
         var color: Color {
-            return Color(colorName)
+            switch self {
+            case .doctor: return .blue
+            case .pharmacy: return .green
+            case .caregiver: return .purple
+            case .nurse: return .pink
+            case .therapist: return .orange
+            case .specialist: return .indigo
+            case .emergency: return .red
+            case .other: return .gray
+            }
         }
         
         /// Sort priority (lower number = higher priority)

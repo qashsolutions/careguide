@@ -92,15 +92,16 @@ struct CareMemosView: View {
                             memoTitle = words.prefix(3).joined(separator: " ")
                         }
                     }
-                Button("Save with note") {
-                    saveMemoWithTitle(title: memoTitle.isEmpty ? nil : memoTitle)
-                }
                 Button("Skip", role: .cancel) {
                     saveMemoWithTitle(title: nil)
+                }
+                Button("Save with note", role: .none) {
+                    saveMemoWithTitle(title: memoTitle.isEmpty ? nil : memoTitle)
                 }
             } message: {
                 Text("Optional: Add up to 3 words to identify this memo")
             }
+            .tint(Color.blue)  // Force blue tint for all interactive elements
             .onDisappear {
                 // Clean up audio resources when leaving the view
                 if audioManager.isRecording {
