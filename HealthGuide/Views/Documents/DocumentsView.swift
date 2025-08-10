@@ -36,6 +36,7 @@ struct DocumentsView: View {
     @State private var pendingFileToSave: (url: URL, fileSize: Int64)?
     @State private var capturedImageToSave: UIImage?
     @State private var showUpgradeAlert = false
+    @State private var hasLoadedCategories = false
     
     var body: some View {
         NavigationStack {
@@ -69,13 +70,6 @@ struct DocumentsView: View {
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "Search by filename or category")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(AppTheme.Colors.primaryBlue)
-                }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button(action: { 
@@ -235,16 +229,19 @@ struct DocumentsView: View {
             }
         }
         .onAppear {
-            print("🔍 DEBUG: DocumentsView appearing")
+            // Only create default categories once
+            guard !hasLoadedCategories else {
+                // Silently skip - no need to log
+                return
+            }
+            
+            print("🔍 DEBUG: DocumentsView appearing for first time")
             print("🔍 DEBUG: Categories count: \(categories.count)")
-            for cat in categories {
-                print("  - \(cat.name ?? "nil"): icon='\(cat.iconName ?? "nil")'")
-            }
+            
             createDefaultCategoriesIfNeeded()
-            print("🔍 DEBUG: After createDefaultCategoriesIfNeeded")
-            for cat in categories {
-                print("  - \(cat.name ?? "nil"): icon='\(cat.iconName ?? "nil")'")
-            }
+            hasLoadedCategories = true
+            
+            print("🔍 DEBUG: After createDefaultCategoriesIfNeeded - created default categories")
         }
         // Add pull-to-refresh for manual updates
         .refreshable {

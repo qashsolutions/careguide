@@ -65,8 +65,16 @@ struct ContactsView: View {
                 NotificationCenter.default.publisher(for: .contactDataDidChange)
                     .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
             ) { _ in
+                print("🔍 [PERF] ContactsView received contactDataDidChange notification")
                 // FetchRequest will automatically update when Core Data changes
                 // This is here for future use if we need manual refresh logic
+            }
+            .onAppear {
+                print("🔍 [PERF] ContactsView appeared")
+                print("🔍 [PERF] ContactsView has \(contacts.count) contacts loaded")
+            }
+            .onDisappear {
+                print("🔍 [PERF] ContactsView disappeared")
             }
         }
     }
@@ -161,22 +169,35 @@ struct ContactsView: View {
     }
     
     private var filteredContacts: [ContactEntity] {
+        let startTime = Date()
+        let result: [ContactEntity]
         if searchText.isEmpty {
-            return Array(contacts)
+            result = Array(contacts)
         } else {
-            return contacts.filter { contact in
+            result = contacts.filter { contact in
                 (contact.name?.localizedCaseInsensitiveContains(searchText) ?? false) ||
                 (contact.phone?.contains(searchText) ?? false) ||
                 (contact.notes?.localizedCaseInsensitiveContains(searchText) ?? false) || // specialization
                 (contact.category?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
+        let elapsed = Date().timeIntervalSince(startTime)
+        if elapsed > 0.01 { // Only log if takes more than 10ms
+            print("🔍 [PERF] ContactsView.filteredContacts took \(elapsed)s for \(contacts.count) contacts")
+        }
+        return result
     }
     
     private var groupedContacts: [ContactEntity.ContactCategory: [ContactEntity]] {
-        Dictionary(grouping: filteredContacts) { contact in
+        let startTime = Date()
+        let result = Dictionary(grouping: filteredContacts) { contact in
             ContactEntity.ContactCategory(rawValue: contact.category ?? "") ?? .other
         }
+        let elapsed = Date().timeIntervalSince(startTime)
+        if elapsed > 0.01 { // Only log if takes more than 10ms
+            print("🔍 [PERF] ContactsView.groupedContacts took \(elapsed)s for \(filteredContacts.count) contacts")
+        }
+        return result
     }
 }
 

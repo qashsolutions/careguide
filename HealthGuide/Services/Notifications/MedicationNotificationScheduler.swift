@@ -29,9 +29,9 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
     
     // MARK: - Notification Timing
     private enum NotificationTiming {
-        static let firstReminder = -90  // 90 minutes before
-        static let secondReminder = -45 // 45 minutes before
-        static let dueNotification = 0  // At scheduled time
+        static let morning = 9   // 9:00 AM
+        static let afternoon = 13 // 1:00 PM
+        static let evening = 18  // 6:00 PM
     }
     
     // MARK: - Initialization
@@ -82,26 +82,238 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
             lastProcessedDate = now
         }
         
-        // Process medications and supplements that were just saved
-        await schedulePendingNotifications()
+        // Use the new simplified scheduling instead
+        await scheduleDailyNotifications()
+    }
+    
+    // MARK: - Legacy method for compatibility
+    func schedulePendingNotifications() async {
+        // Redirect to new simplified system
+        await scheduleDailyNotifications()
     }
     
     // MARK: - Schedule Notifications
-    func schedulePendingNotifications() async {
+    func scheduleDailyNotifications() async {
         guard await NotificationManager.shared.isNotificationEnabled else {
             print("⚠️ Notifications disabled - skipping medication scheduling")
             return
         }
         
-        // Get today's doses that need notifications
-        let todaysDoses = await fetchTodaysDoses()
+        // Check if already scheduled today (debouncing)
+        let lastScheduled = UserDefaults.standard.object(forKey: "lastNotificationScheduleDate") as? Date
+        let today = Calendar.current.startOfDay(for: Date())
         
-        for dose in todaysDoses {
-            await scheduleNotificationsForDose(dose)
+        if let lastScheduled = lastScheduled,
+           Calendar.current.isDate(lastScheduled, inSameDayAs: today) {
+            print("✅ Notifications already scheduled for today")
+            return
+        }
+        
+        // Cancel any existing notifications
+        cancelAllMedicationNotifications()
+        
+        // Schedule the 3 daily notifications
+        await scheduleSimplifiedNotifications()
+        
+        // Mark as scheduled for today
+        UserDefaults.standard.set(Date(), forKey: "lastNotificationScheduleDate")
+        print("✅ Scheduled 3 daily medication notifications")
+    }
+    
+    // MARK: - Schedule Simplified Notifications
+    private func scheduleSimplifiedNotifications() async {
+        let calendar = Calendar.current
+        let today = Date()
+        
+        // Fetch all doses ONCE to reduce CPU usage
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) else { return }
+        
+        let allDoses = await CoreDataManager.shared.fetchTodaysDoses(from: startOfToday, to: endOfToday)
+        
+        // Group doses by period
+        var breakfastItems: [(name: String, dosage: String, type: String)] = []
+        var lunchItems: [(name: String, dosage: String, type: String)] = []
+        var dinnerItems: [(name: String, dosage: String, type: String)] = []
+        
+        for dose in allDoses {
+            if let period = dose.period?.lowercased() {
+                let item: (name: String, dosage: String, type: String)?
+                
+                if let name = dose.medicationName, let dosage = dose.medicationDosage {
+                    item = (name: name, dosage: dosage, type: "medication")
+                } else if let name = dose.supplementName, let dosage = dose.supplementDosage {
+                    item = (name: name, dosage: dosage, type: "supplement")
+                } else if let name = dose.dietName, let portion = dose.dietPortion {
+                    item = (name: name, dosage: portion, type: "diet")
+                } else {
+                    item = nil
+                }
+                
+                if let validItem = item {
+                    switch period {
+                    case "breakfast":
+                        breakfastItems.append(validItem)
+                    case "lunch":
+                        lunchItems.append(validItem)
+                    case "dinner":
+                        dinnerItems.append(validItem)
+                    default:
+                        break
+                    }
+                }
+            }
+        }
+        
+        // Schedule 9 AM notification for breakfast items
+        if let morningTime = calendar.date(bySettingHour: NotificationTiming.morning, minute: 0, second: 0, of: today),
+           morningTime > Date(),
+           !breakfastItems.isEmpty {
+            await scheduleGroupedNotification(
+                id: "morning_meds",
+                title: "💊 Morning Medications",
+                items: breakfastItems,
+                time: morningTime,
+                period: "morning"
+            )
+        }
+        
+        // Schedule 1 PM notification for lunch items
+        if let afternoonTime = calendar.date(bySettingHour: NotificationTiming.afternoon, minute: 0, second: 0, of: today),
+           afternoonTime > Date(),
+           !lunchItems.isEmpty {
+            await scheduleGroupedNotification(
+                id: "afternoon_meds",
+                title: "💊 Afternoon Medications",
+                items: lunchItems,
+                time: afternoonTime,
+                period: "afternoon"
+            )
+        }
+        
+        // Schedule 6 PM notification for dinner items
+        if let eveningTime = calendar.date(bySettingHour: NotificationTiming.evening, minute: 0, second: 0, of: today),
+           eveningTime > Date(),
+           !dinnerItems.isEmpty {
+            await scheduleGroupedNotification(
+                id: "evening_meds",
+                title: "💊 Evening Medications",
+                items: dinnerItems,
+                time: eveningTime,
+                period: "evening"
+            )
         }
     }
     
-    // MARK: - Fetch Today's Doses
+    // MARK: - Fetch Items for Period
+    private func fetchItemsForPeriod(_ period: DoseEntity.TimePeriod) async -> [(name: String, dosage: String, type: String)] {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) else { return [] }
+        
+        // Fetch doses for this period
+        let doses = await CoreDataManager.shared.fetchTodaysDoses(from: startOfToday, to: endOfToday)
+        
+        var items: [(name: String, dosage: String, type: String)] = []
+        
+        for dose in doses {
+            // Check if this dose is for the requested period
+            if dose.period?.lowercased() == period.rawValue.lowercased() {
+                if let name = dose.medicationName, let dosage = dose.medicationDosage {
+                    items.append((name: name, dosage: dosage, type: "medication"))
+                } else if let name = dose.supplementName, let dosage = dose.supplementDosage {
+                    items.append((name: name, dosage: dosage, type: "supplement"))
+                } else if let name = dose.dietName, let portion = dose.dietPortion {
+                    items.append((name: name, dosage: portion, type: "diet"))
+                }
+            }
+        }
+        
+        return items
+    }
+    
+    // MARK: - Schedule Grouped Notification
+    private func scheduleGroupedNotification(
+        id: String,
+        title: String,
+        items: [(name: String, dosage: String, type: String)],
+        time: Date,
+        period: String
+    ) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        
+        // Build the body with all items
+        var bodyLines: [String] = []
+        let itemCount = items.count
+        
+        if itemCount == 1 {
+            bodyLines.append("\(items[0].name) \(items[0].dosage)")
+        } else {
+            bodyLines.append("\(itemCount) items to take:")
+            for item in items.prefix(5) {  // Show first 5 items
+                bodyLines.append("• \(item.name) \(item.dosage)")
+            }
+            if itemCount > 5 {
+                bodyLines.append("• ...and \(itemCount - 5) more")
+            }
+        }
+        
+        content.body = bodyLines.joined(separator: "\n")
+        
+        // Use a distinct sound
+        content.sound = .defaultCritical  // Louder, more distinctive
+        
+        // Make it time-sensitive so it stays visible
+        content.interruptionLevel = .timeSensitive
+        content.relevanceScore = 1.0
+        
+        // Add badge to show pending medications
+        content.badge = NSNumber(value: itemCount)
+        
+        // Set category for action buttons
+        content.categoryIdentifier = "MEDICATION"
+        
+        // Add user info
+        content.userInfo = [
+            "type": "grouped_medication",
+            "period": period,
+            "itemCount": itemCount
+        ]
+        
+        // Create trigger
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: time
+        )
+        
+        let trigger = UNCalendarNotificationTrigger(
+            dateMatching: components,
+            repeats: false
+        )
+        
+        let request = UNNotificationRequest(
+            identifier: id,
+            content: content,
+            trigger: trigger
+        )
+        
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            print("✅ Scheduled \(period) notification for \(itemCount) items at \(time)")
+        } catch {
+            print("❌ Failed to schedule \(period) notification: \(error)")
+        }
+    }
+    
+    // MARK: - Cancel All Medication Notifications
+    private func cancelAllMedicationNotifications() {
+        let identifiers = ["morning_meds", "afternoon_meds", "evening_meds"]
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+        print("🗑️ Cancelled all existing medication notifications")
+    }
+    
+    // MARK: - Fetch Today's Doses (Legacy - kept for compatibility)
     private func fetchTodaysDoses() async -> [DoseData] {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
@@ -114,85 +326,12 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
         return Array(doses.prefix(50))
     }
     
-    // MARK: - Schedule Notifications for Single Dose
+    // MARK: - Schedule Notifications for Single Dose (DEPRECATED - kept for compatibility)
+    // This method is no longer used - we use the simplified 3-notification system instead
     private func scheduleNotificationsForDose(_ dose: DoseData) async {
-        let doseId = dose.id
-        let scheduledTime = dose.scheduledTime
-        
-        // Don't schedule if dose is already taken
-        if dose.isTaken { return }
-        
-        // Don't schedule notifications for past times
-        if scheduledTime < Date() { return }
-        
-        // Check if notifications already exist for this dose
-        let doseIdString = doseId.uuidString
-        let hasExistingNotifications = await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-                let exists = requests.contains { request in
-                    request.identifier.contains(doseIdString)
-                }
-                continuation.resume(returning: exists)
-            }
-        }
-        
-        // Skip if notifications already scheduled
-        if hasExistingNotifications { return }
-        
-        // Get medication/supplement details
-        let itemDetails = getItemDetailsFromTuple(dose)
-        guard let itemName = itemDetails.name,
-              let itemDosage = itemDetails.dosage,
-              let itemType = itemDetails.type else { return }
-        
-        // Get time period name (Breakfast, Lunch, etc.)
-        // let periodName = dose.period ?? "medication"  // Commented out - not currently used
-        
-        // Schedule T-90 notification (90 minutes before)
-        if let t90Time = Calendar.current.date(byAdding: .minute, value: NotificationTiming.firstReminder, to: scheduledTime),
-           t90Time > Date() {
-            let bodyText = "Time to prepare: \(itemName) \(itemDosage)"
-            await scheduleNotification(
-                id: "\(doseId.uuidString)_90min",
-                title: "\(itemType.capitalized) Reminder",
-                body: bodyText,
-                time: t90Time,
-                itemId: doseId,
-                itemName: itemName,
-                itemDosage: itemDosage,
-                itemType: itemType
-            )
-        }
-        
-        // Schedule T-45 notification (45 minutes before)
-        if let t45Time = Calendar.current.date(byAdding: .minute, value: NotificationTiming.secondReminder, to: scheduledTime),
-           t45Time > Date() {
-            let bodyText = "\(itemName) \(itemDosage) - Due in 45 minutes"
-            await scheduleNotification(
-                id: "\(doseId.uuidString)_45min",
-                title: "\(itemType.capitalized) Due Soon",
-                body: bodyText,
-                time: t45Time,
-                itemId: doseId,
-                itemName: itemName,
-                itemDosage: itemDosage,
-                itemType: itemType
-            )
-        }
-        
-        // Schedule T-0 notification (at scheduled time)
-        let mainBodyText = "Time for your \(itemType): \(itemName) \(itemDosage)"
-        await scheduleNotification(
-            id: "\(doseId.uuidString)_0min",
-            title: "Time for \(itemType.capitalized)",
-            body: mainBodyText,
-            time: scheduledTime,
-            itemId: doseId,
-            itemName: itemName,
-            itemDosage: itemDosage,
-            itemType: itemType,
-            isMainNotification: true
-        )
+        // Deprecated - do nothing
+        // The new system schedules 3 grouped notifications at 9am, 1pm, 6pm
+        return
     }
     
     // MARK: - Get Item Details
@@ -287,17 +426,15 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
     
     // MARK: - Schedule for New Medication
     func scheduleNotificationsForNewMedication(_ medicationId: UUID) async {
-        let doses = await CoreDataManager.shared.fetchDosesForMedication(medicationId)
-        for dose in doses {
-            await scheduleNotificationsForDose(dose)
-        }
+        // When a new medication is added, reschedule daily notifications
+        // This will include the new medication in the grouped notifications
+        await scheduleDailyNotifications()
     }
     
     // MARK: - Schedule for New Supplement
     func scheduleNotificationsForNewSupplement(_ supplementId: UUID) async {
-        let doses = await CoreDataManager.shared.fetchDosesForSupplement(supplementId)
-        for dose in doses {
-            await scheduleNotificationsForDose(dose)
-        }
+        // When a new supplement is added, reschedule daily notifications
+        // This will include the new supplement in the grouped notifications
+        await scheduleDailyNotifications()
     }
 }

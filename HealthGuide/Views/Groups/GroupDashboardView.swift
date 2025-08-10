@@ -16,6 +16,7 @@ struct GroupDashboardView: View {
     @State private var showCreateGroup = false
     @State private var showJoinGroup = false
     @State private var selectedGroup: CareGroupEntity?
+    @State private var hasLoadedData = false
     @AppStorage("activeGroupID") private var activeGroupID: String = ""
     
     var body: some View {
@@ -45,7 +46,9 @@ struct GroupDashboardView: View {
                 InviteCodeView(mode: .create, onSuccess: {
                     // Only refresh when group is actually created
                     Task {
+                        hasLoadedData = false  // Force reload after creating
                         await viewModel.loadGroups()
+                        hasLoadedData = true
                     }
                 })
                 .environment(\.managedObjectContext, viewContext)
@@ -54,7 +57,9 @@ struct GroupDashboardView: View {
                 InviteCodeView(mode: .join, onSuccess: {
                     // Only refresh when group is actually joined
                     Task {
+                        hasLoadedData = false  // Force reload after joining
                         await viewModel.loadGroups()
+                        hasLoadedData = true
                     }
                 })
                 .environment(\.managedObjectContext, viewContext)
@@ -64,6 +69,24 @@ struct GroupDashboardView: View {
                     .environment(\.managedObjectContext, viewContext)
             }
             .task {
+                guard !hasLoadedData else {
+                    print("🔍 [PERF] GroupDashboardView.task - Skipped (already loaded)")
+                    return
+                }
+                print("🔍 [PERF] GroupDashboardView.task - Starting (first load)")
+                let startTime = Date()
+                await viewModel.loadGroups()
+                hasLoadedData = true
+                print("🔍 [PERF] GroupDashboardView.task - Completed in \(Date().timeIntervalSince(startTime))s")
+            }
+            .onAppear {
+                print("🔍 [PERF] GroupDashboardView appeared")
+            }
+            .onDisappear {
+                print("🔍 [PERF] GroupDashboardView disappeared")
+            }
+            .refreshable {
+                print("🔍 [PERF] GroupDashboardView manual refresh triggered")
                 await viewModel.loadGroups()
             }
             // COMMENTED OUT: Old implementation causing 100% CPU usage
@@ -335,6 +358,8 @@ final class GroupDashboardViewModel: ObservableObject {
     private let coreDataManager = CoreDataManager.shared
     
     func loadGroups() async {
+        print("🔍 [PERF] GroupDashboardViewModel.loadGroups - Starting")
+        let startTime = Date()
         isLoading = true
         defer { isLoading = false }
         
@@ -345,8 +370,10 @@ final class GroupDashboardViewModel: ObservableObject {
         
         do {
             groups = try context.fetch(request)
+            print("🔍 [PERF] GroupDashboardViewModel.loadGroups - Fetched \(groups.count) groups in \(Date().timeIntervalSince(startTime))s")
         } catch {
             self.error = AppError.coreDataFetchFailed
+            print("🔍 [PERF] GroupDashboardViewModel.loadGroups - Failed: \(error)")
         }
     }
 }

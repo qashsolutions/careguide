@@ -19,6 +19,7 @@ struct MyHealthDashboardView: View {
     @State private var showTakeConfirmation = false
     @State private var pendingDoseToMark: (item: any HealthItem, dose: ScheduledDose?)? = nil
     @State private var tappedItemId: UUID? = nil
+    @State private var hasLoadedData = false
     
     var body: some View {
         NavigationStack {
@@ -60,9 +61,16 @@ struct MyHealthDashboardView: View {
                 await viewModel.loadData()
             }
             .task {
-                print("🔍 DEBUG: MyHealthDashboardView loading data...")
+                // Only load data once when view first appears
+                guard !hasLoadedData else { 
+                    // Silently skip - no need to log
+                    return 
+                }
+                
+                print("🔍 DEBUG: MyHealthDashboardView loading data for first time...")
                 await viewModel.loadData()
                 selectedPeriods = [viewModel.currentPeriod]
+                hasLoadedData = true
                 print("🔍 DEBUG: Loaded \(viewModel.allItems.count) items")
                 for item in viewModel.allItems {
                     let iconName = item.item.itemType.iconName
@@ -346,7 +354,7 @@ struct MyHealthDashboardView: View {
     
     private var addButton: some View {
         Button(action: { showAddItem = true }) {
-            Image(systemName: "plus.circle.fill")
+            Image(systemName: "plus")
                 .font(.system(size: AppTheme.Typography.headline))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
         }
