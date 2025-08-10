@@ -30,6 +30,8 @@
 	<string>Careguide sends notifications to remind you about medication doses and health appointments.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Careguide needs camera access to capture photos of your medical documents for easy storage and reference.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Careguide needs microphone access to help you record memos.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Do you want to allow &quot;Careguide&quot; to use Face ID?</string>
 	<!-- Custom fonts removed - using system fonts only -->

@@ -69,16 +69,16 @@ struct TabBarView: View {
             }
             .tag(2)
             
-            // Conflicts Tab
+            // Memos Tab
             NavigationStack {
-                ConflictsView()
-                    .navigationTitle(AppStrings.TabBar.conflicts)
+                CareMemosView()
+                    .navigationTitle("Memos")
             }
             .tabItem {
                 Label(
-                    title: { Text(AppStrings.TabBar.conflicts) },
+                    title: { Text("Memos") },
                     icon: { 
-                        Image(systemName: selectedTab == 3 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
+                        Image(systemName: selectedTab == 3 ? "mic.circle.fill" : "mic.circle")
                             .font(.system(size: AppTheme.Dimensions.tabIconSize))
                     }
                 )

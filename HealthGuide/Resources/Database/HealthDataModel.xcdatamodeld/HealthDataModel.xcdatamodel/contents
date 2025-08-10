@@ -35,6 +35,15 @@
         <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <relationship name="members" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="GroupMemberEntity" inverseName="group" inverseEntity="GroupMemberEntity"/>
     </entity>
+    <entity name="CareMemoEntity" representedClassName="CareMemoEntity" syncable="YES">
+        <attribute name="audioFileURL" optional="YES" attributeType="String"/>
+        <attribute name="duration" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO" spotlightIndexingEnabled="YES"/>
+        <attribute name="priority" optional="YES" attributeType="String"/>
+        <attribute name="recordedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="relatedMedicationIds" optional="YES" attributeType="Binary"/>
+        <attribute name="transcription" optional="YES" attributeType="String"/>
+    </entity>
     <entity name="ConflictEntity" representedClassName="ConflictEntity" syncable="YES">
         <attribute name="checkedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="checkedBy" optional="YES" attributeType="String"/>
