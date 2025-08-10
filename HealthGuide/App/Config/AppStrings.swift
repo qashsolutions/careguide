@@ -168,11 +168,11 @@ struct AppStrings {
     // MARK: - Conflicts
     struct Conflicts {
         static let title = "Conflicts"
-        static let subtitle = "AI-powered safety checks"
+        static let subtitle = "Safety checks"
         static let highPriority = "⚠️ High Priority"
         static let mediumPriority = "⚠️ Medium Priority"
         static let safe = "✓ Safe"
-        static let checkedVia = "Checked via Claude AI • %@ ago"
+        static let checkedVia = "Checked • %@ ago"
         static let noInteractions = "No known interactions found. Safe to take together."
     }
     

@@ -19,8 +19,7 @@ enum Configuration: Sendable {
     
     // MARK: - API Keys
     enum API {
-        static let claudeAPIKey = Bundle.main.object(forInfoDictionaryKey: "CLAUDE_API_KEY") as? String ?? ""
-        static let geminiAPIKey = Bundle.main.object(forInfoDictionaryKey: "GEMINI_API_KEY") as? String ?? ""
+        // AI API keys removed - not allowed per App Store guidelines
         // STRIPE KEYS DISABLED - Apple IAP required for digital subscriptions
         // These are preserved for future web portal or physical goods
         // static let stripePublishableKey = Bundle.main.object(forInfoDictionaryKey: "STRIPE_PUBLISHABLE_KEY") as? String ?? ""
@@ -29,13 +28,8 @@ enum Configuration: Sendable {
     
     // MARK: - API Endpoints
     enum Endpoints {
-        static let claudeBaseURL = "https://api.anthropic.com/v1"
-        static let geminiBaseURL = "https://generativelanguage.googleapis.com/v1"
-        // static let stripeBaseURL = "https://api.stripe.com/v1" // DISABLED - Using Apple IAP
-        
-        // AI Conflict Check Endpoints
-        static let conflictCheckPath = "/messages"
-        static let geminiConflictPath = "/models/gemini-pro:generateContent"
+        // AI endpoints removed - not using external AI APIs per App Store guidelines
+        // Backend endpoints for app functionality would go here
     }
     
     // MARK: - Health Limits
