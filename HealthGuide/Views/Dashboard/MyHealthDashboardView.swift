@@ -21,6 +21,11 @@ struct MyHealthDashboardView: View {
     @State private var tappedItemId: UUID? = nil
     @State private var hasLoadedData = false
     
+    // Lazy notification setup
+    @AppStorage("hasHealthItems") private var hasHealthItems = false
+    @AppStorage("notificationsSetup") private var notificationsSetup = false
+    @AppStorage("lastNotificationCheck") private var lastNotificationCheck: Double = 0
+    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -72,11 +77,46 @@ struct MyHealthDashboardView: View {
                 selectedPeriods = [viewModel.currentPeriod]
                 hasLoadedData = true
                 print("🔍 DEBUG: Loaded \(viewModel.allItems.count) items")
-                for item in viewModel.allItems {
-                    let iconName = item.item.itemType.iconName
-                    if iconName.isEmpty {
-                        print("  ❌ Empty icon for: \(item.item.name)")
+                
+                // Check if we have items and need to setup notifications
+                if viewModel.allItems.count > 0 {
+                    hasHealthItems = true
+                    
+                    // Check if we need to setup notifications (once per day max)
+                    let lastCheck = Date(timeIntervalSince1970: lastNotificationCheck)
+                    let calendar = Calendar.current
+                    
+                    if !notificationsSetup || !calendar.isDateInToday(lastCheck) {
+                        // Setup notifications in background to avoid blocking UI
+                        Task.detached(priority: .background) {
+                            print("📱 Setting up notifications lazily...")
+                            
+                            // Check and request permission if needed
+                            await NotificationManager.shared.checkNotificationStatus()
+                            
+                            let isEnabled = await NotificationManager.shared.isNotificationEnabled
+                            if !isEnabled {
+                                print("📱 Requesting notification permission...")
+                                let granted = await NotificationManager.shared.requestNotificationPermission()
+                                print("📱 Permission granted: \(granted)")
+                            }
+                            
+                            let isEnabledAfterRequest = await NotificationManager.shared.isNotificationEnabled
+                            if isEnabledAfterRequest {
+                                // Schedule notifications
+                                await MedicationNotificationScheduler.shared.scheduleDailyNotifications()
+                                
+                                await MainActor.run {
+                                    self.notificationsSetup = true
+                                    self.lastNotificationCheck = Date().timeIntervalSince1970
+                                    print("✅ Notifications setup complete")
+                                }
+                            }
+                        }
                     }
+                } else {
+                    hasHealthItems = false
+                    notificationsSetup = false
                 }
             }
             // Disabled - causing excessive refreshes and high energy usage
@@ -101,6 +141,7 @@ struct MyHealthDashboardView: View {
                     Text("Have you taken this medication?")
                 }
             }
+            .tint(Color.blue)  // Force blue tint for all interactive elements
         }
     }
     

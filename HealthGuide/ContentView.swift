@@ -56,12 +56,8 @@ struct ContentView: View {
                             print("⏱️ [PERF] Daily session started in: \(Date().timeIntervalSince(sessionStart))s")
                         }
                         
-                        // Defer notification scheduling to reduce launch CPU spike
-                        // Schedule after a slight delay to let the UI settle
-                        Task {
-                            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds delay
-                            await MedicationNotificationScheduler.shared.scheduleDailyNotifications()
-                        }
+                        // Notifications will be scheduled lazily when user has items
+                        // This reduces CPU spike and memory usage at launch
                     }
             } else {
                 AuthenticationView()

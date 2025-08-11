@@ -3,6 +3,7 @@
 //  Business logic for adding health items with validation and limits
 //  Swift 6 compliant with proper async/await and MainActor isolation
 import Foundation
+import SwiftUI
 
 // MARK: - Add Item View Model
 @available(iOS 18.0, *)
@@ -29,6 +30,7 @@ final class AddItemViewModel: ObservableObject {
     
     // MARK: - Dependencies
     private let coreDataManager = CoreDataManager.shared
+    @AppStorage("hasHealthItems") private var hasHealthItems = false
     
     // MARK: - Computed Properties
     var canAdd: Bool {
@@ -67,6 +69,8 @@ final class AddItemViewModel: ObservableObject {
             // Success - signal view to dismiss
             await MainActor.run {
                 saveSuccessful = true
+                // Mark that we now have health items
+                hasHealthItems = true
             }
         } catch AppError.medicationLimitExceeded, AppError.supplementLimitExceeded {
             showLimitAlert = true
@@ -95,12 +99,7 @@ final class AddItemViewModel: ObservableObject {
                 schedule: schedule
             )
             try await coreDataManager.saveMedication(medication)
-            
-            // Schedule notifications in background task
-            // This prevents blocking the main thread and avoids dispatch assertions
-            Task {
-                await MedicationNotificationScheduler.shared.scheduleNotificationsForNewMedication(medication.id)
-            }
+            // Notifications will be scheduled lazily when user views dashboard
             
         case .supplement:
             let supplement = Supplement(
@@ -110,12 +109,7 @@ final class AddItemViewModel: ObservableObject {
                 schedule: schedule
             )
             try await coreDataManager.saveSupplement(supplement)
-            
-            // Schedule notifications in background task
-            // This prevents blocking the main thread and avoids dispatch assertions
-            Task {
-                await MedicationNotificationScheduler.shared.scheduleNotificationsForNewSupplement(supplement.id)
-            }
+            // Notifications will be scheduled lazily when user views dashboard
             
         case .diet:
             let diet = Diet(

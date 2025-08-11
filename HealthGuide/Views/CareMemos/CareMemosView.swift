@@ -121,7 +121,7 @@ struct CareMemosView: View {
             .onChange(of: audioManager.lastRecordingResult) { _, newResult in
                 // Handle auto-stop when recording reaches max duration
                 if let result = newResult {
-                    audioManager.isRecording = false
+                    // AudioManager already sets isRecording = false internally
                     
                     if let url = result.url {
                         // Store the result and show title dialog

@@ -535,7 +535,7 @@ struct CategoryListRow: View {
                 // Category name and details
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
                     Text(category.displayName)
-                        .font(.monaco(AppTheme.ElderTypography.headline - 3))
+                        .font(.monaco(AppTheme.ElderTypography.headline - 4))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
                     

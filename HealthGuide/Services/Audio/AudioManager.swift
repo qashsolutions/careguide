@@ -11,39 +11,45 @@ import AVFoundation
 import Combine
 
 @available(iOS 18.0, *)
-@MainActor
-final class AudioManager: NSObject, ObservableObject {
+final class AudioManager: NSObject, ObservableObject, @unchecked Sendable {
     
     // MARK: - Singleton
     static let shared = AudioManager()
     
-    // MARK: - Published State
-    @Published var isRecording = false
-    @Published var isPlaying = false
-    @Published var currentlyPlayingId: UUID?
-    @Published var recordingTime: TimeInterval = 0
-    @Published var playbackTime: TimeInterval = 0
-    @Published var audioLevel: Float = 0 // For visual feedback
-    @Published var lastRecordingResult: RecordingResult? = nil // For auto-stop notification
+    // MARK: - Published State (UI updates on MainActor)
+    @MainActor @Published private(set) var isRecording = false
+    @MainActor @Published private(set) var isPlaying = false
+    @MainActor @Published var currentlyPlayingId: UUID?
+    @MainActor @Published private(set) var recordingTime: TimeInterval = 0
+    @MainActor @Published private(set) var playbackTime: TimeInterval = 0
+    @MainActor @Published private(set) var audioLevel: Float = 0 // For visual feedback
+    @MainActor @Published var lastRecordingResult: RecordingResult? = nil // For auto-stop notification
     
     // MARK: - Constants
     private let maxRecordingDuration: TimeInterval = 60 // 1 minute
     private let updateInterval: TimeInterval = 0.1 // Update UI every 100ms
     
-    // MARK: - Audio Components
+    // MARK: - Audio Components (accessed only on audioQueue)
     private var audioRecorder: AVAudioRecorder?
     private var audioPlayer: AVAudioPlayer?
     private var recordingTimer: Timer?
     private var playbackTimer: Timer?
-    private var audioSession = AVAudioSession.sharedInstance()
+    private let audioSession = AVAudioSession.sharedInstance()
     
     // MARK: - File Management
     private var currentRecordingURL: URL?
     private var hasActiveSession = false
+    private var recordingStartTime: Date? // Track recording time on audio queue
+    
+    // MARK: - Dedicated Audio Queue
+    private let audioQueue = DispatchQueue(label: "com.healthguide.audio", qos: .userInitiated)
     
     private override init() {
         super.init()
-        setupAudioSession()
+        // Setup audio session on audio queue
+        audioQueue.async { [weak self] in
+            self?.setupAudioSession()
+        }
     }
     
     // MARK: - Setup
@@ -57,125 +63,166 @@ final class AudioManager: NSObject, ObservableObject {
         }
     }
     
-    private func activateSessionIfNeeded() throws {
-        guard !hasActiveSession else { return }
-        try audioSession.setActive(true)
-        hasActiveSession = true
-    }
+    // This method is removed - activation is now done inline on audioQueue
     
     // MARK: - Recording
     func startRecording() async throws -> URL {
         print("🧵 [AudioManager] startRecording called")
-        print("🧵 [AudioManager] Actor context: @MainActor")
         
-        print("🧵 [AudioManager] Step 1: Stopping playback")
-        // Stop any existing playback
-        stopPlayback()
-        
-        print("🧵 [AudioManager] Step 2: Requesting microphone permission")
-        // Check microphone permission
+        // Check microphone permission first (can be done on any thread)
         guard await requestMicrophonePermission() else {
             print("❌ [AudioManager] Microphone permission denied")
             throw AudioError.microphonePermissionDenied
         }
-        print("✅ [AudioManager] Microphone permission granted")
         
-        print("🧵 [AudioManager] Step 3: Creating file URL")
-        // Create unique file URL
-        let fileName = "memo_\(Date().timeIntervalSince1970).m4a"
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let memosFolderURL = documentsPath.appendingPathComponent("CareMemos", isDirectory: true)
-        
-        print("🧵 [AudioManager] Step 4: Creating folder if needed")
-        // Create folder if needed
-        try? FileManager.default.createDirectory(at: memosFolderURL, withIntermediateDirectories: true)
-        
-        let fileURL = memosFolderURL.appendingPathComponent(fileName)
-        currentRecordingURL = fileURL
-        print("✅ [AudioManager] File URL created: \(fileURL.lastPathComponent)")
-        
-        print("🧵 [AudioManager] Step 5: Activating audio session")
-        // Activate audio session only when needed
-        try activateSessionIfNeeded()
-        print("✅ [AudioManager] Audio session activated")
-        
-        print("🧵 [AudioManager] Step 6: Configuring recording settings")
-        // Configure recording settings (optimized for voice)
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 22050, // Lower sample rate for voice
-            AVNumberOfChannelsKey: 1, // Mono
-            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
-            AVEncoderBitRateKey: 32000 // 32kbps
-        ]
-        
-        print("🧵 [AudioManager] Step 7: Creating AVAudioRecorder")
-        // Create and start recorder
-        audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
-        print("✅ [AudioManager] AVAudioRecorder created")
-        
-        print("🧵 [AudioManager] Step 8: Setting up recorder")
-        audioRecorder?.delegate = self
-        audioRecorder?.isMeteringEnabled = true
-        audioRecorder?.prepareToRecord()
-        
-        print("🧵 [AudioManager] Step 9: Starting recording")
-        audioRecorder?.record()
-        print("✅ [AudioManager] Recording started")
-        
-        print("🧵 [AudioManager] Step 10: Updating state")
-        isRecording = true
-        recordingTime = 0
-        
-        print("🧵 [AudioManager] Step 11: Starting timer")
-        // Start update timer
-        startRecordingTimer()
-        print("✅ [AudioManager] Timer started")
-        
-        print("✅ [AudioManager] startRecording completed successfully")
-        return fileURL
+        // All audio operations must happen on the audio queue
+        return try await withCheckedThrowingContinuation { continuation in
+            audioQueue.async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(throwing: AudioError.recordingFailed)
+                    return
+                }
+                
+                do {
+                    print("🧵 [AudioManager] On audio queue: \(Thread.current)")
+                    
+                    // Stop any existing playback (on audio queue)
+                    self.stopPlaybackInternal()
+                    
+                    // Create unique file URL
+                    let fileName = "memo_\(Date().timeIntervalSince1970).m4a"
+                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let memosFolderURL = documentsPath.appendingPathComponent("CareMemos", isDirectory: true)
+                    
+                    // Create folder if needed
+                    try? FileManager.default.createDirectory(at: memosFolderURL, withIntermediateDirectories: true)
+                    
+                    let fileURL = memosFolderURL.appendingPathComponent(fileName)
+                    self.currentRecordingURL = fileURL
+                    
+                    // Configure audio session (on audio queue)
+                    if !self.hasActiveSession {
+                        try self.audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                        try self.audioSession.setActive(true)
+                        self.hasActiveSession = true
+                    }
+                    
+                    // Configure recording settings
+                    let settings: [String: Any] = [
+                        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                        AVSampleRateKey: 22050,
+                        AVNumberOfChannelsKey: 1,
+                        AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+                        AVEncoderBitRateKey: 32000
+                    ]
+                    
+                    // Create and configure recorder (on audio queue)
+                    let recorder = try AVAudioRecorder(url: fileURL, settings: settings)
+                    recorder.delegate = self
+                    recorder.isMeteringEnabled = true
+                    recorder.prepareToRecord()
+                    
+                    // Store and start recording
+                    self.audioRecorder = recorder
+                    self.recordingStartTime = Date() // Track start time on audio queue
+                    recorder.record()
+                    
+                    // Update UI state on MainActor
+                    Task { @MainActor in
+                        self.isRecording = true
+                        self.recordingTime = 0
+                        self.startRecordingTimer()
+                    }
+                    
+                    print("✅ [AudioManager] Recording started successfully")
+                    continuation.resume(returning: fileURL)
+                    
+                } catch {
+                    print("❌ [AudioManager] Recording failed: \(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
     
     func stopRecording() -> RecordingResult {
-        print("🧵 [AudioManager] stopRecording called on thread: \(Thread.current)")
-        print("🧵 [AudioManager] Is Main Thread: \(Thread.isMainThread)")
+        print("🧵 [AudioManager] stopRecording called")
         
-        // Capture duration BEFORE resetting
-        let finalDuration = min(recordingTime, maxRecordingDuration)
-        
-        recordingTimer?.invalidate()
-        recordingTimer = nil
-        
-        audioRecorder?.stop()
-        audioRecorder = nil
-        
-        isRecording = false
-        recordingTime = 0
-        audioLevel = 0
-        
-        // Deactivate audio session if not playing
-        if !isPlaying && hasActiveSession {
-            try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            hasActiveSession = false
+        // All operations on audio queue
+        return audioQueue.sync { [weak self] in
+            guard let self = self else {
+                return RecordingResult(url: nil, duration: 0)
+            }
+            
+            // Calculate duration from start time (tracked on audio queue)
+            let finalDuration: TimeInterval
+            if let startTime = self.recordingStartTime {
+                finalDuration = min(Date().timeIntervalSince(startTime), self.maxRecordingDuration)
+            } else {
+                finalDuration = 0
+            }
+            
+            // Stop recorder on audio queue
+            self.audioRecorder?.stop()
+            let url = self.currentRecordingURL
+            self.audioRecorder = nil
+            self.recordingStartTime = nil
+            
+            // Deactivate audio session (check if player exists on audio queue)
+            if self.hasActiveSession && self.audioPlayer == nil {
+                try? self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+                self.hasActiveSession = false
+            }
+            
+            // Update UI state on MainActor
+            Task { @MainActor in
+                self.recordingTimer?.invalidate()
+                self.recordingTimer = nil
+                self.isRecording = false
+                self.recordingTime = 0
+                self.audioLevel = 0
+            }
+            
+            return RecordingResult(url: url, duration: finalDuration)
         }
-        
-        return RecordingResult(url: currentRecordingURL, duration: finalDuration)
     }
     
+    // Internal helper for stopping playback on audio queue
+    private func stopPlaybackInternal() {
+        self.audioPlayer?.stop()
+        self.audioPlayer = nil
+        
+        Task { @MainActor in
+            self.playbackTimer?.invalidate()
+            self.playbackTimer = nil
+            self.isPlaying = false
+            self.currentlyPlayingId = nil
+            self.playbackTime = 0
+        }
+    }
+    
+    @MainActor
     private func startRecordingTimer() {
         recordingTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
+            
             Task { @MainActor in
                 self.recordingTime += self.updateInterval
                 
-                // Update audio level for visual feedback
-                self.audioRecorder?.updateMeters()
-                self.audioLevel = self.audioRecorder?.averagePower(forChannel: 0) ?? -160
+                // Get audio level from recorder on audio queue
+                self.audioQueue.async { [weak self] in
+                    guard let self = self else { return }
+                    self.audioRecorder?.updateMeters()
+                    let level = self.audioRecorder?.averagePower(forChannel: 0) ?? -160
+                    
+                    Task { @MainActor in
+                        self.audioLevel = level
+                    }
+                }
                 
                 // Auto-stop at max duration
                 if self.recordingTime >= self.maxRecordingDuration {
                     let result = self.stopRecording()
-                    // Publish the result so CareMemosView knows auto-stop happened
                     self.lastRecordingResult = result
                 }
             }
@@ -184,50 +231,82 @@ final class AudioManager: NSObject, ObservableObject {
     
     // MARK: - Playback
     func play(url: URL, memoId: UUID) throws {
-        // Stop any existing playback
-        stopPlayback()
-        
-        // Activate audio session only when needed
-        try activateSessionIfNeeded()
-        
-        // Create player
-        audioPlayer = try AVAudioPlayer(contentsOf: url)
-        audioPlayer?.delegate = self
-        audioPlayer?.prepareToPlay()
-        audioPlayer?.play()
-        
-        isPlaying = true
-        currentlyPlayingId = memoId
-        playbackTime = 0
-        
-        // Start update timer
-        startPlaybackTimer()
-    }
-    
-    func stopPlayback() {
-        playbackTimer?.invalidate()
-        playbackTimer = nil
-        
-        audioPlayer?.stop()
-        audioPlayer = nil
-        
-        isPlaying = false
-        currentlyPlayingId = nil
-        playbackTime = 0
-        
-        // Deactivate audio session if not recording
-        if !isRecording && hasActiveSession {
-            try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            hasActiveSession = false
+        // All audio operations on audio queue
+        try audioQueue.sync { [weak self] in
+            guard let self = self else { throw AudioError.playbackFailed }
+            
+            // Stop any existing playback
+            self.stopPlaybackInternal()
+            
+            // Configure audio session
+            if !self.hasActiveSession {
+                try self.audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                try self.audioSession.setActive(true)
+                self.hasActiveSession = true
+            }
+            
+            // Create and configure player on audio queue
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.delegate = self
+            player.prepareToPlay()
+            self.audioPlayer = player
+            player.play()
+            
+            // Update UI state on MainActor
+            Task { @MainActor in
+                self.isPlaying = true
+                self.currentlyPlayingId = memoId
+                self.playbackTime = 0
+                self.startPlaybackTimer()
+            }
         }
     }
     
+    func stopPlayback() {
+        audioQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.audioPlayer?.stop()
+            self.audioPlayer = nil
+            
+            // Deactivate audio session if not recording
+            Task { @MainActor in
+                let shouldDeactivate = !self.isRecording
+                if shouldDeactivate && self.hasActiveSession {
+                    self.audioQueue.async {
+                        try? self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+                        self.hasActiveSession = false
+                    }
+                }
+            }
+            
+            Task { @MainActor in
+                self.playbackTimer?.invalidate()
+                self.playbackTimer = nil
+                self.isPlaying = false
+                self.currentlyPlayingId = nil
+                self.playbackTime = 0
+            }
+        }
+    }
+    
+    @MainActor
     private func startPlaybackTimer() {
         playbackTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            Task { @MainActor in
-                if let player = self.audioPlayer {
-                    self.playbackTime = player.currentTime
+            
+            self.audioQueue.async { [weak self] in
+                guard let self = self, let player = self.audioPlayer else { return }
+                let currentTime = player.currentTime
+                let duration = player.duration
+                
+                Task { @MainActor in
+                    self.playbackTime = currentTime
+                    
+                    // Check if playback finished
+                    if currentTime >= duration {
+                        self.stopPlayback()
+                    }
                 }
             }
         }
@@ -248,21 +327,32 @@ final class AudioManager: NSObject, ObservableObject {
     
     // MARK: - Cleanup
     func cleanup() {
-        // Don't call stopRecording here - the view handles it before cleanup
-        // This prevents recursive calls and duplicate operations
-        
-        // Stop any timers if still running
-        recordingTimer?.invalidate()
-        recordingTimer = nil
-        
-        // Stop playback
-        stopPlayback()
-        
-        // Only deactivate if we have an active session
-        if hasActiveSession {
-            // Use .notifyOthersOnDeactivation to notify other apps that audio is available
-            try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            hasActiveSession = false
+        // Clean up on audio queue
+        audioQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Stop any audio operations
+            self.audioRecorder?.stop()
+            self.audioRecorder = nil
+            self.audioPlayer?.stop()
+            self.audioPlayer = nil
+            
+            // Deactivate session
+            if self.hasActiveSession {
+                try? self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+                self.hasActiveSession = false
+            }
+            
+            Task { @MainActor in
+                // Clean up UI state
+                self.recordingTimer?.invalidate()
+                self.recordingTimer = nil
+                self.playbackTimer?.invalidate()
+                self.playbackTimer = nil
+                self.isRecording = false
+                self.isPlaying = false
+                self.currentlyPlayingId = nil
+            }
         }
     }
 }
