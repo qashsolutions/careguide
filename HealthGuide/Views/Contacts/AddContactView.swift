@@ -118,6 +118,7 @@ struct AddContactView: View {
             } message: {
                 Text("Is \(name) a healthcare provider? Please select the type:")
             }
+            .tint(Color.blue)  // Force blue tint for all interactive elements
             .alert("Duplicate Contact", isPresented: $showDuplicateAlert) {
                 Button("Replace Existing", role: .destructive) {
                     saveContact(replaceDuplicate: true)
