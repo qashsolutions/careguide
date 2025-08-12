@@ -178,6 +178,7 @@ struct DocumentsView: View {
             } message: {
                 Text("Document upload and download is a premium feature. Basic users can view existing documents but cannot add new ones.")
             }
+            .tint(Color.blue)  // Force blue tint for button text visibility
             .fullScreenCover(item: $selectedCategoryForViewing) { category in
                 CategoryDocumentsView(category: category)
                     .environment(\.managedObjectContext, viewContext)

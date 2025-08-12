@@ -29,9 +29,9 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
     
     // MARK: - Notification Timing
     private enum NotificationTiming {
-        static let morning = 9   // 9:00 AM
-        static let afternoon = 13 // 1:00 PM
-        static let evening = 18  // 6:00 PM
+        static let morning = 7     // 7:00 AM (middle of 6-9 AM window)
+        static let afternoon = 13  // 1:00 PM (middle of 12-2 PM window)
+        static let evening = 18    // 6:00 PM (middle of 5-8 PM window)
     }
     
     // MARK: - Initialization
@@ -165,7 +165,7 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
             }
         }
         
-        // Schedule 9 AM notification for breakfast items
+        // Schedule 7 AM notification for breakfast items (6-9 AM window)
         if let morningTime = calendar.date(bySettingHour: NotificationTiming.morning, minute: 0, second: 0, of: today),
            morningTime > Date(),
            !breakfastItems.isEmpty {
@@ -178,7 +178,7 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
             )
         }
         
-        // Schedule 1 PM notification for lunch items
+        // Schedule 1 PM notification for lunch items (12-2 PM window)
         if let afternoonTime = calendar.date(bySettingHour: NotificationTiming.afternoon, minute: 0, second: 0, of: today),
            afternoonTime > Date(),
            !lunchItems.isEmpty {
@@ -191,7 +191,7 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
             )
         }
         
-        // Schedule 6 PM notification for dinner items
+        // Schedule 6 PM notification for dinner items (5-8 PM window)
         if let eveningTime = calendar.date(bySettingHour: NotificationTiming.evening, minute: 0, second: 0, of: today),
            eveningTime > Date(),
            !dinnerItems.isEmpty {
@@ -268,8 +268,8 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
         content.interruptionLevel = .timeSensitive
         content.relevanceScore = 1.0
         
-        // Add badge to show pending medications
-        content.badge = NSNumber(value: itemCount)
+        // Badge managed by BadgeManager for time-based counts
+        // content.badge removed - centralized badge management
         
         // Set category for action buttons
         content.categoryIdentifier = "MEDICATION"
@@ -410,9 +410,13 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
             "\(doseId.uuidString)_0min"
         ]
         
-        // Note: removePendingNotificationRequests is synchronous, not async
+        // Remove pending (future) notifications
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
-        print("🗑️ Cancelled notifications for dose: \(doseId)")
+        
+        // ALSO remove delivered notifications from notification center
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+        
+        print("🗑️ Cancelled and removed delivered notifications for dose: \(doseId)")
     }
     
     // MARK: - Mark Dose as Taken
@@ -422,6 +426,53 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
         
         // Update the dose in Core Data using CoreDataManager
         await CoreDataManager.shared.markDoseAsTaken(doseId)
+        
+        // Check if we should also remove grouped notifications
+        await removeGroupedNotificationIfAllTaken()
+        
+        // Update badge count for current period only
+        await BadgeManager.shared.updateBadgeForCurrentPeriod()
+    }
+    
+    // MARK: - Remove Grouped Notification If All Taken
+    private func removeGroupedNotificationIfAllTaken() async {
+        // Check each time period to see if all items are taken
+        let periods = [
+            ("morning_meds", TimePeriod.breakfast),
+            ("afternoon_meds", TimePeriod.lunch),
+            ("evening_meds", TimePeriod.dinner)
+        ]
+        
+        for (notificationId, period) in periods {
+            // Check if all items in this period are marked as taken
+            let allTaken = await checkIfAllItemsTakenForPeriod(period)
+            
+            if allTaken {
+                // Remove both pending and delivered grouped notifications
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                print("🗑️ Removed grouped notification: \(notificationId) - all items taken")
+            }
+        }
+    }
+    
+    // Helper to check if all items in a period are taken
+    private func checkIfAllItemsTakenForPeriod(_ period: TimePeriod) async -> Bool {
+        do {
+            // Fetch all doses for today
+            let allDoses = try await CoreDataManager.shared.fetchDosesForDate(Date())
+            
+            // Filter doses for this specific period (period is stored as string in DoseRecord)
+            let periodDoses = allDoses.filter { dose in
+                dose.period.lowercased() == period.rawValue.lowercased()
+            }
+            
+            // If no doses exist or all are taken, return true
+            return periodDoses.isEmpty || periodDoses.allSatisfy { $0.isTaken }
+        } catch {
+            print("❌ Error checking doses for period: \(error)")
+            return false
+        }
     }
     
     // MARK: - Schedule for New Medication

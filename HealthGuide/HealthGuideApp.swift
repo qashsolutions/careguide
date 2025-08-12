@@ -14,17 +14,13 @@ struct HealthGuideApp: App {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var medicationScheduler = MedicationNotificationScheduler.shared
     @State private var isInitialized = false
+    @Environment(\.scenePhase) var scenePhase
     
     let persistenceController = PersistenceController.shared
     
     init() {
-        #if DEBUG
-        print("🚀 HealthGuideApp: Launching...")
-        print("📱 iOS Version: \(UIDevice.current.systemVersion)")
-        print("🧵 Main Thread: \(Thread.isMainThread)")
-        print("🧵 Thread: \(Thread.current)")
-        print("💾 Core Data: Initialized")
-        #endif
+        AppLogger.main.info("HealthGuide launching on iOS \(UIDevice.current.systemVersion)")
+        AppLogger.main.debug("Main Thread: \(Thread.isMainThread), Thread: \(Thread.current.description)")
     }
 
     var body: some Scene {
@@ -46,57 +42,87 @@ struct HealthGuideApp: App {
                     .environmentObject(subscriptionManager)
                     .environmentObject(medicationScheduler)
                     .onAppear {
-                        #if DEBUG
-                        print("✅ HealthGuideApp: Main window appeared")
-                        #endif
+                        AppLogger.main.debug("Main window appeared")
+                    }
+                    .onChange(of: scenePhase) { oldPhase, newPhase in
+                        handleScenePhaseChange(from: oldPhase, to: newPhase)
                     }
             }
         }
     }
     
     private func initializeManagers() async {
+        let signpostID = AppLogger.signpost.makeSignpostID()
+        let signpostState = AppLogger.signpost.beginInterval("AppInitialization", id: signpostID)
         let startTime = Date()
-        print("⏱️ [PERF] App initialization started at \(startTime)")
         
         // 1. Skip SubscriptionManager init - let it initialize lazily when needed
-        let subStart = Date()
-        print("⏱️ [PERF] SubscriptionManager init SKIPPED for faster launch")
-        // Task {
-        //     await self.subscriptionManager.initialize()
-        // }
-        print("⏱️ [PERF] SubscriptionManager deferred: \(Date().timeIntervalSince(subStart))s")
+        AppLogger.performance.debug("SubscriptionManager init deferred for faster launch")
         
         // 2. Configure AccessSessionManager
         let accessStart = Date()
-        print("⏱️ [PERF] AccessSessionManager config starting...")
         await accessManager.configure()
-        print("⏱️ [PERF] AccessSessionManager took: \(Date().timeIntervalSince(accessStart))s")
+        AppLogger.performance.debug("AccessSessionManager configured in \(Date().timeIntervalSince(accessStart))s")
         
         // 3. Skip NotificationManager check - defer until user needs notifications
-        let notifStart = Date()
-        print("⏱️ [PERF] NotificationManager check SKIPPED for faster launch")
-        // Will check when user actually accesses notification features
-        // Task {
-        //     await NotificationManager.shared.checkNotificationStatus()
-        // }
-        print("⏱️ [PERF] NotificationManager deferred: \(Date().timeIntervalSince(notifStart))s")
+        AppLogger.performance.debug("NotificationManager check deferred")
         
-        // 4. Initialize MedicationNotificationScheduler
-        // Disabled automatic listening to prevent CPU issues
-        // _ = medicationScheduler
-        #if DEBUG
-        print("💊 Medication notification scheduler ready (manual mode)")
-        #endif
-        
-        // 5. Mark as initialized immediately
+        // 4. Mark as initialized
         await MainActor.run {
             let totalTime = Date().timeIntervalSince(startTime)
-            print("⏱️ [PERF] TOTAL initialization time: \(totalTime)s")
+            AppLogger.performance.info("App initialization completed in \(totalTime)s")
             if totalTime > 2.0 {
-                print("⚠️ [PERF] WARNING: Initialization took longer than 2 seconds!")
+                AppLogger.performance.warning("Initialization took longer than 2 seconds: \(totalTime)s")
             }
             isInitialized = true
-            print("✅ App initialization complete - loading UI")
+        }
+        
+        AppLogger.signpost.endInterval("AppInitialization", signpostState)
+    }
+    
+    // MARK: - Scene Phase Handling
+    
+    private func handleScenePhaseChange(from oldPhase: ScenePhase, to newPhase: ScenePhase) {
+        AppLogger.main.debug("Scene phase: \(String(describing: oldPhase)) → \(String(describing: newPhase))")
+        
+        switch newPhase {
+        case .active:
+            AppLogger.main.info("App became active")
+            // Restart subscription transaction listener
+            Task {
+                await SubscriptionManager.shared.initialize()
+            }
+            
+            // Start periodic badge updates
+            Task { @MainActor in
+                BadgeManager.shared.startUpdates()
+                await BadgeManager.shared.updateBadgeForCurrentPeriod()
+            }
+            
+        case .inactive:
+            AppLogger.main.debug("App became inactive")
+            // App is transitioning, don't do heavy cleanup yet
+            
+        case .background:
+            AppLogger.main.info("App entering background - pausing operations")
+            
+            // Stop badge updates to prevent CPU usage in background
+            BadgeManager.shared.stopPeriodicUpdates()
+            
+            // Stop subscription transaction listener (CRITICAL!)
+            SubscriptionManager.shared.cleanup()
+            
+            // Clean up keyboard to prevent RTIInputSystemClient errors
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            
+            // Pause other periodic tasks
+            AccessSessionManager.shared.cleanup()
+            MemoryMonitor.shared.cleanup()
+            
+            AppLogger.main.debug("Background cleanup complete")
+            
+        @unknown default:
+            AppLogger.main.warning("Unknown scene phase encountered")
         }
     }
 }
@@ -107,24 +133,95 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         #if DEBUG
-        print("📲 AppDelegate: didFinishLaunching")
+        AppLogger.main.debug("AppDelegate: didFinishLaunching")
         #endif
         
         // Setup notification delegate immediately
         NotificationManager.shared.setupDelegate()
         
+        // Clear badge on app launch (Swift 6 compliant)
+        DispatchQueue.main.async {
+            Task {
+                await BadgeManager.shared.clearBadge()
+            }
+        }
+        
         // Defer memory monitoring until after launch
         // _ = MemoryMonitor.shared
-        print("📊 MemoryMonitor: Deferred initialization")
+        AppLogger.performance.debug("MemoryMonitor: Deferred initialization")
         
         return true
+    }
+    
+    /// Handle app becoming active - update badge for current period
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        AppLogger.main.info("App became active")
+        
+        // Restart subscription transaction listener
+        Task {
+            await SubscriptionManager.shared.initialize()
+        }
+        
+        DispatchQueue.main.async {
+            Task {
+                // Start periodic badge updates when app becomes active
+                BadgeManager.shared.startUpdates()
+                await BadgeManager.shared.updateBadgeForCurrentPeriod()
+            }
+        }
+    }
+    
+    /// Handle app entering background - pause expensive operations
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        AppLogger.main.info("App entering background - pausing operations")
+        
+        // Stop badge updates to prevent CPU usage in background
+        BadgeManager.shared.stopPeriodicUpdates()
+        
+        // Stop subscription transaction listener
+        SubscriptionManager.shared.cleanup()
+        
+        // Clean up keyboard to prevent RTIInputSystemClient errors
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Pause other periodic tasks
+        AccessSessionManager.shared.cleanup()
+        MemoryMonitor.shared.cleanup()
+        
+        AppLogger.main.debug("Background cleanup complete")
+    }
+    
+    /// Handle app termination - clean up resources
+    func applicationWillTerminate(_ application: UIApplication) {
+        AppLogger.main.info("App terminating - starting cleanup")
+        
+        // Cancel badge update task to prevent CPU spike
+        BadgeManager.shared.stopPeriodicUpdates()
+        
+        // Stop subscription transaction listener (CRITICAL - this was the CPU spike cause!)
+        SubscriptionManager.shared.cleanup()
+        
+        // Clean up other managers with timers/tasks
+        // Clean up access session manager timer
+        AccessSessionManager.shared.cleanup()
+        
+        // Clean up memory monitor timer
+        MemoryMonitor.shared.cleanup()
+        
+        // Clean up notification scheduler if needed
+        MedicationNotificationScheduler.shared.cleanup()
+        
+        // Clean up audio manager resources
+        AudioManager.shared.cleanup()
+        
+        AppLogger.main.info("App termination cleanup complete")
     }
     
     /// Handle push notification registration
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenParts = deviceToken.map { data in String(format: "%02.2hhx", data) }
         let token = tokenParts.joined()
-        print("📱 Push Notification Token: \(token)")
+        AppLogger.notification.logPrivate("Push token received", privateData: token)
         
         // Store token for future server integration
         UserDefaults.standard.set(token, forKey: "PushNotificationToken")
@@ -132,17 +229,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     /// Handle push notification registration failure
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("❌ Failed to register for push notifications: \(error.localizedDescription)")
+        AppLogger.notification.error("Failed to register for push notifications: \(error.localizedDescription)")
     }
     
     /// Handle incoming push notifications
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        print("📬 Received push notification: \(userInfo)")
+        AppLogger.notification.debug("Received push notification")
         
         // Handle the notification based on its content
-        if let aps = userInfo["aps"] as? [String: Any] {
-            // Process notification data
-            print("📋 Notification content: \(aps)")
+        if userInfo["aps"] != nil {
+            // Process notification data when needed
+            AppLogger.notification.debug("Notification content received")
         }
         
         completionHandler(.newData)
@@ -150,7 +247,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     /// Handle memory warnings
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
-        print("⚠️ Application received memory warning")
+        AppLogger.performance.warning("Memory warning received")
         Task { @MainActor in
             MemoryMonitor.shared.performEmergencyCleanup()
         }

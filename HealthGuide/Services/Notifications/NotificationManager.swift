@@ -347,29 +347,27 @@ final class NotificationManager: NSObject, ObservableObject {
         )
     }
     
-    /// Schedule a notification with a specific trigger
+    /// Schedule a notification with a specific trigger - Swift 6 async/await compliant
     @discardableResult
-    private func scheduleNotificationWithTrigger(
+    nonisolated private func scheduleNotificationWithTrigger(
         identifier: String,
         content: UNNotificationContent,
         trigger: UNNotificationTrigger
     ) async -> Bool {
-        return await withCheckedContinuation { continuation in
+        do {
             let request = UNNotificationRequest(
                 identifier: identifier,
                 content: content,
                 trigger: trigger
             )
             
-            notificationCenter.add(request) { error in
-                if let error = error {
-                    print("❌ Failed to schedule notification \(identifier): \(error)")
-                    continuation.resume(returning: false)
-                } else {
-                    print("✅ Scheduled notification: \(identifier)")
-                    continuation.resume(returning: true)
-                }
-            }
+            // Use modern async/await API for thread-safe notification scheduling
+            try await UNUserNotificationCenter.current().add(request)
+            print("✅ Scheduled notification: \(identifier)")
+            return true
+        } catch {
+            print("❌ Failed to schedule notification \(identifier): \(error)")
+            return false
         }
     }
     

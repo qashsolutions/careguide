@@ -450,7 +450,15 @@ struct MyHealthDashboardView: View {
             await viewModel.markDoseTaken(itemId: itemData.item.id, doseId: dose.id)
             pendingDoseToMark = nil
             tappedItemId = nil // Clear visual feedback
+            
+            // Update badge count based on remaining items
+            await updateBadgeCount()
         }
+    }
+    
+    private func updateBadgeCount() async {
+        // Use BadgeManager for time-based badge updates
+        await BadgeManager.shared.updateBadgeForCurrentPeriod()
     }
     
     // MARK: - Spotlight Integration

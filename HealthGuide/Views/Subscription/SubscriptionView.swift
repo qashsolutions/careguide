@@ -18,6 +18,10 @@ struct SubscriptionView: View {
     @State private var showCancellationConfirmation = false
     @State private var cancellationResult: CancellationResult?
     @State private var selectedPaymentMethod: SubscriptionManager.PaymentMethod = .applePay
+    @State private var showLocalTestingAlert = false
+    @State private var showErrorAlert = false
+    @State private var alertTitle = ""
+    @State private var alertMessage = ""
     
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -38,6 +42,33 @@ struct SubscriptionView: View {
                 
                 ScrollView {
                     VStack(spacing: AppTheme.Spacing.large) {
+                        // Debug mode indicator
+                        #if DEBUG
+                        if !subscriptionManager.availableProducts.isEmpty {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("StoreKit Test Mode - Product loaded: $8.99/month")
+                                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                                    .foregroundColor(.green)
+                            }
+                            .padding(AppTheme.Spacing.small)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
+                        } else {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Loading StoreKit products...")
+                                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                                    .foregroundColor(.orange)
+                            }
+                            .padding(AppTheme.Spacing.small)
+                            .background(Color.orange.opacity(0.1))
+                            .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
+                        }
+                        #endif
+                        
                         // Current status card
                         statusCard
                         
@@ -68,32 +99,6 @@ struct SubscriptionView: View {
                     .foregroundColor(AppTheme.Colors.primaryBlue)
                 }
             }
-            .sheet(isPresented: $showPaymentOptions) {
-                // STRIPE PAYMENT SELECTOR DISABLED
-                // Apple requires using In-App Purchases for digital subscriptions
-                // Direct Apple Pay purchase without payment method selection
-                EmptyView()
-                    .task {
-                        showPaymentOptions = false
-                        do {
-                            // Always use Apple Pay (StoreKit) for digital subscriptions
-                            try await subscriptionManager.purchaseSubscription(method: .applePay)
-                        } catch {
-                            print("Purchase failed: \(error)")
-                        }
-                    }
-                
-                /* PAYMENT METHOD SELECTOR DISABLED - Apple IAP Required
-                PaymentMethodSelector(
-                    selectedMethod: $selectedPaymentMethod,
-                    onPurchase: {
-                        Task {
-                            try await subscriptionManager.purchaseSubscription(method: selectedPaymentMethod)
-                        }
-                    }
-                )
-                */
-            }
             .alert("Cancel Subscription", isPresented: $showCancellationConfirmation) {
                 Button("Cancel Subscription", role: .destructive) {
                     Task {
@@ -104,6 +109,7 @@ struct SubscriptionView: View {
             } message: {
                 Text(getCancellationMessage())
             }
+            .tint(Color.blue)
             .alert("Cancellation Complete", isPresented: .constant(cancellationResult != nil)) {
                 Button("OK") {
                     cancellationResult = nil
@@ -113,6 +119,23 @@ struct SubscriptionView: View {
                     Text(getCancellationResultMessage(result))
                 }
             }
+            .tint(Color.blue)
+            .alert(alertTitle, isPresented: $showLocalTestingAlert) {
+                Button("OK") { 
+                    showLocalTestingAlert = false
+                }
+            } message: {
+                Text(alertMessage)
+            }
+            .tint(Color.blue)
+            .alert(alertTitle, isPresented: $showErrorAlert) {
+                Button("OK") { 
+                    showErrorAlert = false
+                }
+            } message: {
+                Text(alertMessage)
+            }
+            .tint(Color.blue)
             .task {
                 await subscriptionManager.loadProducts()
                 await subscriptionManager.checkSubscriptionStatus()
@@ -250,41 +273,41 @@ struct SubscriptionView: View {
                 .font(.monaco(AppTheme.ElderTypography.headline))
                 .foregroundColor(AppTheme.Colors.textPrimary)
             
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
-                FeatureRow(icon: "infinity", text: "Unlimited daily access", color: AppTheme.Colors.primaryBlue)
-                FeatureRow(icon: "person.3.fill", text: "Unlimited group members", color: AppTheme.Colors.primaryBlue)
-                FeatureRow(icon: "doc.text.fill", text: "Upload & download documents", color: .green)
-                FeatureRow(icon: "bell.badge.fill", text: "Advanced reminders", color: .orange)
-                FeatureRow(icon: "chart.line.uptrend.xyaxis", text: "Health analytics", color: AppTheme.Colors.primaryBlue)
-                FeatureRow(icon: "lock.shield.fill", text: "Enhanced security", color: .red)
-                FeatureRow(icon: "headphones", text: "Priority support", color: .indigo)
-            }
+            Text("Unlimited access to:")
+                .font(.monaco(AppTheme.ElderTypography.body))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .padding(.bottom, AppTheme.Spacing.small)
             
-            // Basic plan limitations
-            if !subscriptionManager.subscriptionState.isActive {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
-                    Divider().padding(.vertical, AppTheme.Spacing.small)
-                    
-                    Text("Basic Plan (Free)")
-                        .font(.monaco(AppTheme.ElderTypography.caption))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                    
-                    HStack(spacing: AppTheme.Spacing.small) {
-                        Image(systemName: "exclamationmark.circle")
-                            .foregroundColor(AppTheme.Colors.warningOrange)
-                        Text("Limited to once-per-day access")
-                            .font(.monaco(AppTheme.ElderTypography.footnote))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    
-                    HStack(spacing: AppTheme.Spacing.small) {
-                        Image(systemName: "exclamationmark.circle")
-                            .foregroundColor(AppTheme.Colors.warningOrange)
-                        Text("Cannot upload or download documents")
-                            .font(.monaco(AppTheme.ElderTypography.footnote))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                }
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
+                FeatureRow(
+                    icon: "heart.text.clipboard",
+                    text: "Add & Track Medications, Supplements with due Notifications",
+                    color: AppTheme.Colors.primaryBlue
+                )
+                
+                FeatureRow(
+                    icon: "person.3",
+                    text: "Group - up to three members with two as admin",
+                    color: AppTheme.Colors.primaryBlue
+                )
+                
+                FeatureRow(
+                    icon: "person.crop.circle.badge.checkmark",
+                    text: "Save all key contacts in one place",
+                    color: .green
+                )
+                
+                FeatureRow(
+                    icon: "mic.circle",
+                    text: "Record one minute memos for easy access",
+                    color: .orange
+                )
+                
+                FeatureRow(
+                    icon: "folder",
+                    text: "Secure document storage - up to 15 MB",
+                    color: .indigo
+                )
             }
         }
         .padding(AppTheme.Spacing.large)
@@ -335,7 +358,39 @@ struct SubscriptionView: View {
             }
             
         case .trial:
-            Button(action: { showPaymentOptions = true }) {
+            Button(action: { 
+                Task {
+                    print("🛒 Starting purchase from Upgrade Now button")
+                    
+                    // Check if products are available first
+                    if subscriptionManager.availableProducts.isEmpty {
+                        print("⚠️ No products available")
+                        alertTitle = "Loading Products"
+                        alertMessage = "Please wait a moment and try again. Products are being loaded."
+                        showErrorAlert = true
+                        return
+                    }
+                    
+                    print("📦 Products available: \(subscriptionManager.availableProducts.count)")
+                    print("📦 Product IDs: \(subscriptionManager.availableProducts.map { $0.id })")
+                    
+                    do {
+                        try await subscriptionManager.purchaseSubscription(method: .applePay)
+                        print("✅ Purchase completed successfully")
+                    } catch SubscriptionError.productNotFound {
+                        // Friendly error for missing configuration
+                        alertTitle = "Setup In Progress"
+                        alertMessage = "Subscription setup is being finalized. Please try again later. Your free trial continues without interruption!"
+                        showErrorAlert = true
+                    } catch {
+                        // Other errors
+                        alertTitle = "Unable to Process"
+                        alertMessage = "We couldn't complete your purchase. Please try again later. Your free trial continues."
+                        showErrorAlert = true
+                        print("❌ Purchase failed: \(error)")
+                    }
+                }
+            }) {
                 Text("Upgrade Now")
                     .font(.monaco(AppTheme.ElderTypography.callout))
                     .fontWeight(.semibold)

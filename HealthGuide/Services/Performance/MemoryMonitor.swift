@@ -213,9 +213,10 @@ final class MemoryMonitor: ObservableObject {
     // MARK: - App Lifecycle
     
     @objc private func appDidEnterBackground() {
-        // Reduce memory footprint when backgrounded
-        performMemoryCleanup()
+        // Only invalidate timer, don't perform expensive cleanup on background
+        // The scene phase handler already manages cleanup properly
         memoryTimer?.invalidate()
+        print("📊 MemoryMonitor: Timer stopped for background")
     }
     
     @objc private func appWillTerminate() {

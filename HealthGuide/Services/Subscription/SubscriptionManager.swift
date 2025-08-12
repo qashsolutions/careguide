@@ -232,6 +232,10 @@ final class SubscriptionManager: ObservableObject {
         print("🔧 Setting up StoreKit...")
         await setupStoreKit()
         
+        // Check for existing active subscriptions (important for app reinstalls or multi-device)
+        print("🔍 Checking for existing active subscriptions...")
+        await checkForExistingSubscriptions()
+        
         print("📊 Checking subscription status...")
         await checkSubscriptionStatus()
         
@@ -242,8 +246,63 @@ final class SubscriptionManager: ObservableObject {
         #endif
     }
     
+    /// Check for existing active subscriptions (for app reinstalls, multi-device, etc.)
+    private func checkForExistingSubscriptions() async {
+        print("🔍 Checking current entitlements...")
+        
+        // Check all current entitlements
+        for await result in StoreKit.Transaction.currentEntitlements {
+            do {
+                let transaction = try await self.verifyTransaction(result)
+                
+                // Check if this is our monthly subscription
+                if transaction.productID == Configuration.monthlyProductId {
+                    print("✅ Found active subscription: \(transaction.productID)")
+                    
+                    if let expirationDate = transaction.expirationDate {
+                        if expirationDate > Date() {
+                            // Subscription is still active
+                            let willAutoRenew = transaction.revocationReason == nil
+                            
+                            await MainActor.run {
+                                self.subscriptionState = .active(
+                                    expiryDate: expirationDate,
+                                    autoRenew: willAutoRenew
+                                )
+                            }
+                            
+                            print("✅ Subscription active until: \(expirationDate)")
+                            print("  Auto-renew: \(willAutoRenew)")
+                            return // Found active subscription, no need to check further
+                        } else {
+                            print("⚠️ Subscription expired on: \(expirationDate)")
+                        }
+                    }
+                }
+            } catch {
+                print("❌ Error checking entitlement: \(error)")
+            }
+        }
+        
+        print("ℹ️ No active subscriptions found in current entitlements")
+    }
+    
     /// Setup StoreKit components
     private func setupStoreKit() async {
+        // First, check for any unfinished transactions from previous sessions
+        print("🔍 Checking for unfinished transactions...")
+        for await result in StoreKit.Transaction.unfinished {
+            do {
+                let transaction = try await self.verifyTransaction(result)
+                print("⚠️ Found unfinished transaction: \(transaction.id)")
+                await self.handleTransactionUpdate(transaction)
+                await transaction.finish()
+                print("✅ Finished previously incomplete transaction")
+            } catch {
+                print("❌ Error processing unfinished transaction: \(error)")
+            }
+        }
+        
         // Setup transaction listener with error handling
         await MainActor.run {
             self.updateListenerTask = Task {
@@ -279,6 +338,14 @@ final class SubscriptionManager: ObservableObject {
                 object: nil
             )
         }
+    }
+    
+    /// Clean up resources when app terminates
+    func cleanup() {
+        print("🧹 SubscriptionManager cleanup - cancelling transaction listener")
+        updateListenerTask?.cancel()
+        updateListenerTask = nil
+        print("🧹 Cleanup complete")
     }
     
     deinit {
@@ -473,11 +540,11 @@ final class SubscriptionManager: ObservableObject {
             }
         }
         
-        // Default to none for now (StoreKit check disabled for debugging)
+        // Default to none, then check for active subscriptions
         subscriptionState = .none
         
         // Check Apple subscription only - Stripe disabled for digital subscriptions
-        // await checkAppleSubscription() // TEMPORARILY DISABLED
+        await checkAppleSubscription()
         
         /* STRIPE CHECK DISABLED - Apple IAP required for digital subscriptions
          * Cannot use external payment processors for digital content per App Store Guidelines

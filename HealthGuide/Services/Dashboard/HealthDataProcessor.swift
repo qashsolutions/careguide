@@ -187,14 +187,23 @@ extension HealthDataProcessor {
         let hour = Calendar.current.component(.hour, from: Date())
         
         switch hour {
-        case 5..<11:
-            return .breakfast
-        case 11..<16:
-            return .lunch
-        case 16..<21:
-            return .dinner
+        case 6..<9:
+            return .breakfast   // 6 AM - 9 AM
+        case 12..<14:
+            return .lunch       // 12 PM - 2 PM
+        case 17..<20:
+            return .dinner      // 5 PM - 8 PM
         default:
-            return .bedtime
+            // Outside medication windows, determine nearest period
+            if hour < 6 {
+                return .breakfast   // Early morning -> breakfast coming
+            } else if hour >= 9 && hour < 12 {
+                return .lunch       // Late morning -> lunch coming
+            } else if hour >= 14 && hour < 17 {
+                return .dinner      // Afternoon -> dinner coming
+            } else {
+                return .dinner      // Evening/night -> last period was dinner
+            }
         }
     }
     
