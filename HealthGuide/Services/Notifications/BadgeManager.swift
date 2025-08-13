@@ -149,9 +149,9 @@ final class BadgeManager: ObservableObject {
         let now = Date()
         let hour = calendar.component(.hour, from: now)
         
-        // Find next period transition time based on notification windows
-        // Breakfast: 6-9 AM, Lunch: 12-2 PM, Dinner: 5-8 PM
-        let transitions = [6, 9, 12, 14, 17, 20] // Start and end of each window
+        // Find next period transition time based on updated windows
+        // Breakfast: 6-11 AM, Lunch: 12-3 PM, Dinner: 5-8 PM
+        let transitions = [6, 11, 12, 15, 17, 20] // Start and end of each window
         
         for transitionHour in transitions {
             if hour < transitionHour {

@@ -204,17 +204,10 @@ struct MyHealthDashboardView: View {
     
     
     private func shouldHighlightPeriod(_ period: TimePeriod) -> Bool {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch period {
-        case .breakfast:
-            return hour >= 6 && hour < 11
-        case .lunch:
-            return hour >= 11 && hour < 18
-        case .dinner:
-            return hour >= 18 || hour < 6
-        default:
-            return false
-        }
+        // Use the same logic as HealthDataProcessor.getCurrentTimePeriod()
+        // to ensure consistency
+        let currentPeriod = HealthDataProcessor.getCurrentTimePeriod()
+        return period == currentPeriod
     }
     
     private func timePeriodSection(for period: TimePeriod) -> some View {

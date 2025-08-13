@@ -178,6 +178,13 @@ struct CategoryDocumentsView: View {
                     DocumentRowView(document: document) {
                         selectedDocument = document
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteDocument(document)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
             }
             .padding(AppTheme.Spacing.screenPadding)
@@ -192,11 +199,11 @@ struct CategoryDocumentsView: View {
             
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
                 Text("\(documents.count) document\(documents.count == 1 ? "" : "s")")
-                    .font(.monaco(AppTheme.ElderTypography.headline))
+                    .font(.monaco(AppTheme.ElderTypography.headline - 4))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 
                 Text(category.formattedTotalSize)
-                    .font(.monaco(AppTheme.ElderTypography.caption))
+                    .font(.monaco(AppTheme.ElderTypography.caption - 3))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
             
@@ -260,6 +267,28 @@ struct CategoryDocumentsView: View {
             return Array(documents)
         } else {
             return documents.filter { $0.matches(searchTerm: searchText) }
+        }
+    }
+    
+    private func deleteDocument(_ document: DocumentEntity) {
+        // Delete the physical file
+        if let localPath = document.localPath {
+            let fileURL = DocumentEntity.medicalDocumentsDirectory.appendingPathComponent(localPath)
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        
+        // Update category count before deletion
+        if let category = document.categoryRelation {
+            category.documentCount = max(0, category.documentCount - 1)
+        }
+        
+        // Delete from Core Data
+        viewContext.delete(document)
+        
+        do {
+            try viewContext.save()
+        } catch {
+            print("Failed to delete document: \(error)")
         }
     }
     
@@ -368,26 +397,26 @@ struct DocumentRowView: View {
                 // Document info
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
                     Text(document.displayName)
-                        .font(.monaco(AppTheme.ElderTypography.headline))
+                        .font(.monaco(AppTheme.ElderTypography.headline - 4))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                         .lineLimit(2)
                     
                     HStack(spacing: AppTheme.Spacing.medium) {
                         Text(document.formattedFileSize)
-                            .font(.monaco(AppTheme.ElderTypography.caption))
+                            .font(.monaco(AppTheme.ElderTypography.caption - 3))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         
                         Text("•")
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         
                         Text(document.formattedCreatedDate)
-                            .font(.monaco(AppTheme.ElderTypography.caption))
+                            .font(.monaco(AppTheme.ElderTypography.caption - 3))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                     
                     if let notes = document.notes, !notes.isEmpty {
                         Text(notes)
-                            .font(.monaco(AppTheme.ElderTypography.footnote))
+                            .font(.monaco(AppTheme.ElderTypography.footnote - 2))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .lineLimit(1)
                     }

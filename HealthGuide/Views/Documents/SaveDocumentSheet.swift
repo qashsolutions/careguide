@@ -69,8 +69,8 @@ struct SaveDocumentSheet: View {
                         }
                     }
                     .disabled(!canSave)
-                    .fontWeight(.semibold)
-                    .foregroundColor(canSave ? AppTheme.Colors.primaryBlue : AppTheme.Colors.textSecondary)
+                    .fontWeight(.bold)
+                    .foregroundColor(canSave ? .blue : Color.gray)
                 }
             }
             .onAppear {

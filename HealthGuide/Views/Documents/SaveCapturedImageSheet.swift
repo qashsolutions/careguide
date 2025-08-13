@@ -68,7 +68,8 @@ struct SaveCapturedImageSheet: View {
                         }
                     }
                     .disabled(!canSave)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
+                    .foregroundColor(canSave ? .blue : Color.gray)
                 }
             }
             .onAppear {

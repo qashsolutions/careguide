@@ -186,23 +186,31 @@ extension HealthDataProcessor {
     static func getCurrentTimePeriod() -> TimePeriod {
         let hour = Calendar.current.component(.hour, from: Date())
         
+        // Extended time windows to match actual usage patterns:
+        // Breakfast: 6 AM - 11 AM (5 hours)
+        // Lunch: 12 PM - 3 PM (3 hours)  
+        // Dinner: 5 PM - 8 PM (3 hours)
+        
         switch hour {
-        case 6..<9:
-            return .breakfast   // 6 AM - 9 AM
-        case 12..<14:
-            return .lunch       // 12 PM - 2 PM
+        case 6..<11:
+            return .breakfast   // 6 AM - 11 AM
+        case 12..<15:
+            return .lunch       // 12 PM - 3 PM (noon to 3 PM)
         case 17..<20:
             return .dinner      // 5 PM - 8 PM
         default:
-            // Outside medication windows, determine nearest period
+            // Outside medication windows, return the nearest/most logical period
             if hour < 6 {
                 return .breakfast   // Early morning -> breakfast coming
-            } else if hour >= 9 && hour < 12 {
-                return .lunch       // Late morning -> lunch coming
-            } else if hour >= 14 && hour < 17 {
-                return .dinner      // Afternoon -> dinner coming
+            } else if hour == 11 {
+                return .breakfast   // Still breakfast until noon
+            } else if hour >= 15 && hour < 17 {
+                return .lunch       // 3-5 PM still lunch period
+            } else if hour >= 20 {
+                return .dinner      // After 8 PM -> still dinner period
             } else {
-                return .dinner      // Evening/night -> last period was dinner
+                // This shouldn't happen, but default to lunch for midday
+                return .lunch
             }
         }
     }
