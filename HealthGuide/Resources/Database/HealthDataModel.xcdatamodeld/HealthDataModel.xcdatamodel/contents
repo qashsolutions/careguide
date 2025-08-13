@@ -182,13 +182,18 @@
         <attribute name="currency" optional="YES" attributeType="String"/>
         <attribute name="currentPeriodEnd" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="customerId" optional="YES" attributeType="String"/>
+        <attribute name="deviceIdentifier" optional="YES" attributeType="String"/>
         <attribute name="hasUsedRefund" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="id" optional="YES" attributeType="String"/>
+        <attribute name="lastSessionUsedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="paymentMethod" optional="YES" attributeType="String"/>
         <attribute name="priceAmount" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
         <attribute name="startDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="status" optional="YES" attributeType="String"/>
         <attribute name="trialEndDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="trialSessionsTotal" optional="YES" attributeType="Integer 32" defaultValueString="30" usesScalarValueType="YES"/>
+        <attribute name="trialSessionsUsed" optional="YES" attributeType="Integer 32" usesScalarValueType="YES"/>
+        <attribute name="trialStartedAutomatically" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="userEmail" optional="YES" attributeType="String"/>
         <attribute name="userPhone" optional="YES" attributeType="String"/>

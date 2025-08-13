@@ -16,6 +16,11 @@ struct ContentView: View {
     @EnvironmentObject private var accessManager: AccessSessionManager
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     
+    // Session start indicator
+    @State private var showSessionStartIndicator = false
+    @State private var sessionIndicatorScale: CGFloat = 0.5
+    @State private var sessionIndicatorOpacity: Double = 0
+    
     // Debug counter to track view recreations
     static var appearCount = 0
     
@@ -48,12 +53,39 @@ struct ContentView: View {
                         print("⏱️ [VIEW] TabBarView disappeared")
                     }
                     .task {
-                        // Start daily session if needed (basic users only)
-                        if accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
+                        // Start daily session if needed (trial users)
+                        if accessManager.canAccess && subscriptionManager.subscriptionState.isInTrial {
                             let sessionStart = Date()
                             print("⏱️ [PERF] Starting daily session...")
+                            print("🎯 Trial session indicator will show")
+                            
+                            // Show session start indicator for trial users
+                            if subscriptionManager.trialSessionsRemaining > 0 {
+                                await MainActor.run {
+                                    showSessionStartIndicator = true
+                                    // Animate in
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        sessionIndicatorScale = 1.0
+                                        sessionIndicatorOpacity = 1.0
+                                    }
+                                    // Animate out after delay
+                                    Task {
+                                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                                        withAnimation(.easeIn(duration: 0.3)) {
+                                            sessionIndicatorOpacity = 0
+                                        }
+                                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                                        showSessionStartIndicator = false
+                                        sessionIndicatorScale = 0.5
+                                    }
+                                }
+                            }
+                            
                             await accessManager.startDailySession()
                             print("⏱️ [PERF] Daily session started in: \(Date().timeIntervalSince(sessionStart))s")
+                        } else if accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
+                            // Non-trial, non-subscription users get their daily session without indicator
+                            await accessManager.startDailySession()
                         }
                         
                         // Notifications will be scheduled lazily when user has items
@@ -71,6 +103,17 @@ struct ContentView: View {
                     }
             }
         }
+        .overlay {
+            // Session start indicator overlay
+            if showSessionStartIndicator {
+                SessionStartIndicator(
+                    scale: sessionIndicatorScale,
+                    opacity: sessionIndicatorOpacity,
+                    sessionsRemaining: subscriptionManager.trialSessionsRemaining
+                )
+                .allowsHitTesting(false) // Don't block user interaction
+            }
+        }
         .onAppear {
             ContentView.appearCount += 1
             print("⏱️ [VIEW] ContentView appeared (count: \(ContentView.appearCount))")
@@ -82,6 +125,41 @@ struct ContentView: View {
                 print("⚠️ [PERF] WARNING: ContentView appeared \(ContentView.appearCount) times - possible view thrashing!")
             }
         }
+    }
+}
+
+// MARK: - Session Start Indicator
+@available(iOS 18.0, *)
+struct SessionStartIndicator: View {
+    let scale: CGFloat
+    let opacity: Double
+    let sessionsRemaining: Int
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Checkmark icon
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 48))
+                .foregroundColor(.green)
+            
+            // Session started text
+            Text("Session Started")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.primary)
+            
+            // Sessions remaining
+            Text("\(sessionsRemaining) sessions remaining")
+                .font(.system(size: 16))
+                .foregroundColor(.secondary)
+        }
+        .padding(24)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.regularMaterial)
+                .shadow(radius: 10)
+        )
+        .scaleEffect(scale)
+        .opacity(opacity)
     }
 }
 

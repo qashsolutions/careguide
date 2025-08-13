@@ -64,10 +64,25 @@ struct HealthGuideApp: App {
         await accessManager.configure()
         AppLogger.performance.debug("AccessSessionManager configured in \(Date().timeIntervalSince(accessStart))s")
         
-        // 3. Skip NotificationManager check - defer until user needs notifications
+        // 3. Auto-start trial on first launch
+        if !UserDefaults.standard.bool(forKey: "app.hasLaunchedBefore") {
+            AppLogger.main.info("First launch detected - starting free trial")
+            await subscriptionManager.startFreeTrial()
+            UserDefaults.standard.set(true, forKey: "app.hasLaunchedBefore")
+            AppLogger.main.info("Trial auto-started with 30 sessions")
+            AppLogger.main.info("Trial state: \(subscriptionManager.subscriptionState.displayName)")
+            AppLogger.main.info("Sessions remaining: \(subscriptionManager.trialSessionsRemaining)")
+        } else {
+            // Load existing trial session data if in trial
+            await subscriptionManager.checkSubscriptionStatus()
+            AppLogger.main.info("Subscription state: \(subscriptionManager.subscriptionState.displayName)")
+            AppLogger.main.info("Sessions remaining: \(subscriptionManager.trialSessionsRemaining)")
+        }
+        
+        // 4. Skip NotificationManager check - defer until user needs notifications
         AppLogger.performance.debug("NotificationManager check deferred")
         
-        // 4. Mark as initialized
+        // 5. Mark as initialized
         await MainActor.run {
             let totalTime = Date().timeIntervalSince(startTime)
             AppLogger.performance.info("App initialization completed in \(totalTime)s")

@@ -94,12 +94,22 @@ final class AccessSessionManager: ObservableObject {
             currentSubscriptionState = isConfigured ? SubscriptionManager.shared.subscriptionState : .none
         }
         
-        // Trial users have unlimited access during trial period
+        // Trial users check session bank
         if currentSubscriptionState.isInTrial {
-            canAccess = true
-            isCheckingAccess = false
-            print("🎉 Trial user - unlimited access")
-            return
+            // Check if sessions remain in the 30-session bank
+            let subscriptionManager = SubscriptionManager.shared
+            if subscriptionManager.hasTrialSessionsAvailable {
+                canAccess = true
+                isCheckingAccess = false
+                print("🎉 Trial user - \(subscriptionManager.trialSessionsRemaining) sessions remaining")
+                return
+            } else {
+                // Out of sessions - need to subscribe
+                canAccess = false
+                isCheckingAccess = false
+                print("❌ Trial user - No sessions remaining (used \(subscriptionManager.trialSessionsUsed)/30)")
+                return
+            }
         }
         
         // Premium users always have access
@@ -154,6 +164,13 @@ final class AccessSessionManager: ObservableObject {
         
         // Don't start multiple sessions
         if currentSession?.isActive == true { return }
+        
+        // Deduct from trial session bank if in trial
+        let subscriptionManager = SubscriptionManager.shared
+        if subscriptionManager.subscriptionState.isInTrial {
+            subscriptionManager.useTrialSession()
+            print("🎫 Trial session deducted - Remaining: \(subscriptionManager.trialSessionsRemaining)")
+        }
         
         let context = persistenceController.container.viewContext
         

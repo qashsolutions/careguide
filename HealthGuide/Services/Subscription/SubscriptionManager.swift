@@ -91,6 +91,7 @@ final class SubscriptionManager: ObservableObject {
         static let monthlyPrice: Decimal = 8.99
         static let currency = "USD"
         static let trialDurationDays = 7
+        static let trialSessionsTotal = 30 // Total sessions in 7-day trial
         static let refundPercentage = 0.50 // 50% refund within days 8-14 to prevent gaming
         static let gracePeriodDays = 3 // Extra days after failed payment
         
@@ -186,6 +187,10 @@ final class SubscriptionManager: ObservableObject {
     @Published var isProcessingPayment = false
     @Published var paymentError: String?
     
+    // Trial session tracking
+    @Published var trialSessionsRemaining: Int = 0
+    @Published var trialSessionsUsed: Int = 0
+    
     // MARK: - Private Properties
     private var updateListenerTask: Task<Void, Never>?
     private let userDefaults = UserDefaults.standard
@@ -202,6 +207,9 @@ final class SubscriptionManager: ObservableObject {
         static let cancellationDate = "subscription.cancellationDate"
         static let hasUsedTrial = "subscription.hasUsedTrial"
         static let selectedPaymentMethod = "subscription.paymentMethod"
+        static let trialSessionsRemaining = "subscription.trial.sessionsRemaining"
+        static let trialSessionsUsed = "subscription.trial.sessionsUsed"
+        static let hasLaunchedBefore = "app.hasLaunchedBefore"
     }
     
     // MARK: - Initialization
@@ -420,14 +428,50 @@ final class SubscriptionManager: ObservableObject {
         let startDate = Date()
         let endDate = Calendar.current.date(byAdding: .day, value: Configuration.trialDurationDays, to: startDate)!
         
+        // Initialize trial with 30 sessions
         userDefaults.set(startDate, forKey: UserDefaultsKeys.trialStartDate)
         userDefaults.set(true, forKey: UserDefaultsKeys.hasUsedTrial)
         userDefaults.set(false, forKey: "hasSeenPaymentPrompt") // Track payment prompt
+        userDefaults.set(Configuration.trialSessionsTotal, forKey: UserDefaultsKeys.trialSessionsRemaining)
+        userDefaults.set(0, forKey: UserDefaultsKeys.trialSessionsUsed)
+        
+        // Update published properties
+        trialSessionsRemaining = Configuration.trialSessionsTotal
+        trialSessionsUsed = 0
         
         subscriptionState = .trial(startDate: startDate, endDate: endDate)
         
         // Schedule notifications
         await scheduleTrialNotifications(startDate: startDate, endDate: endDate)
+        
+        print("🎉 Trial started with \(Configuration.trialSessionsTotal) sessions for \(Configuration.trialDurationDays) days")
+    }
+    
+    /// Use one trial session from the bank
+    func useTrialSession() {
+        guard trialSessionsRemaining > 0 else { 
+            print("❌ No trial sessions remaining")
+            return 
+        }
+        
+        trialSessionsRemaining -= 1
+        trialSessionsUsed += 1
+        
+        userDefaults.set(trialSessionsRemaining, forKey: UserDefaultsKeys.trialSessionsRemaining)
+        userDefaults.set(trialSessionsUsed, forKey: UserDefaultsKeys.trialSessionsUsed)
+        
+        print("🎫 Trial session used: \(trialSessionsUsed)/\(Configuration.trialSessionsTotal) | Remaining: \(trialSessionsRemaining)")
+    }
+    
+    /// Load trial session data from UserDefaults
+    func loadTrialSessionData() {
+        trialSessionsRemaining = userDefaults.integer(forKey: UserDefaultsKeys.trialSessionsRemaining)
+        trialSessionsUsed = userDefaults.integer(forKey: UserDefaultsKeys.trialSessionsUsed)
+    }
+    
+    /// Check if user has sessions available in trial
+    var hasTrialSessionsAvailable: Bool {
+        return subscriptionState.isInTrial && trialSessionsRemaining > 0
     }
     
     /// Purchase subscription
@@ -536,6 +580,8 @@ final class SubscriptionManager: ObservableObject {
             
             if Date() < endDate {
                 subscriptionState = .trial(startDate: trialStartDate, endDate: endDate)
+                // Load session data when in trial
+                loadTrialSessionData()
                 return
             }
         }

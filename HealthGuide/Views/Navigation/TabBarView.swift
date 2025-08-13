@@ -70,6 +70,10 @@ struct TabBarView: View {
             }
             .tag(4)
         }
+        .overlay(alignment: .top) {
+            TrialSessionBadge()
+                .zIndex(1) // Ensure it appears above navigation bars
+        }
         .onAppear {
             print("🔍 [PERF] TabBarView.onAppear - hasInitialized: \(hasInitialized)")
             if !hasInitialized {
@@ -123,6 +127,39 @@ struct TabBarView: View {
         
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
+}
+
+// MARK: - Trial Session Badge
+@available(iOS 18.0, *)
+struct TrialSessionBadge: View {
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    
+    var body: some View {
+        if subscriptionManager.subscriptionState.isInTrial {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(red: 1.0, green: 0.667, blue: 0)) // #FFAA00
+                if subscriptionManager.trialDaysRemaining > 0 {
+                    Text("Only \(subscriptionManager.trialSessionsRemaining) sessions remaining over \(subscriptionManager.trialDaysRemaining) days")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.primary)
+                } else {
+                    Text("Only \(subscriptionManager.trialSessionsRemaining) sessions remaining - Last day!")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .strokeBorder(Color(red: 1.0, green: 0.667, blue: 0), lineWidth: 1.5) // #FFAA00
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
     }
 }
 

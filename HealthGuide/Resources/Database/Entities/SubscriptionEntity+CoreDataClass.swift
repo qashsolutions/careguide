@@ -2,7 +2,7 @@
 //  SubscriptionEntity+CoreDataClass.swift
 //  HealthGuide
 //
-//  Created by Ramana Chinthapenta on 8/3/25.
+//  Created by Ramana Chinthapenta on 8/12/25.
 //
 //
 
