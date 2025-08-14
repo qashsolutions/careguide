@@ -79,8 +79,10 @@ struct HealthGuideApp: App {
             AppLogger.main.info("Sessions remaining: \(subscriptionManager.trialSessionsRemaining)")
         }
         
-        // 4. Skip NotificationManager check - defer until user needs notifications
-        AppLogger.performance.debug("NotificationManager check deferred")
+        // 4. Clean up old notifications and schedule daily cleanup
+        AppLogger.performance.debug("Setting up notification cleanup")
+        await NotificationManager.shared.cleanupPreviousDayNotifications()
+        await NotificationManager.shared.scheduleEndOfDayCleanup()
         
         // 5. Mark as initialized
         await MainActor.run {
@@ -112,6 +114,11 @@ struct HealthGuideApp: App {
             Task { @MainActor in
                 BadgeManager.shared.startUpdates()
                 await BadgeManager.shared.updateBadgeForCurrentPeriod()
+            }
+            
+            // Clean up old notifications when app becomes active
+            Task {
+                await NotificationManager.shared.cleanupOldMedicationNotifications()
             }
             
         case .inactive:

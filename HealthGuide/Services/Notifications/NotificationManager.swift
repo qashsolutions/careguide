@@ -398,6 +398,148 @@ final class NotificationManager: NSObject, ObservableObject {
     func removeAllDeliveredNotifications() {
         notificationCenter.removeAllDeliveredNotifications()
     }
+    
+    // MARK: - Auto-Cleanup for Old Notifications
+    
+    /// Schedule daily cleanup of old notifications at midnight
+    func scheduleEndOfDayCleanup() async {
+        // Get current date components
+        let calendar = Calendar.current
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        
+        // Set to next midnight (00:00)
+        components.hour = 0
+        components.minute = 0
+        components.second = 0
+        
+        guard let midnight = calendar.date(from: components),
+              let nextMidnight = calendar.date(byAdding: .day, value: 1, to: midnight) else {
+            print("❌ Failed to calculate midnight for cleanup")
+            return
+        }
+        
+        // Create notification content for internal cleanup trigger
+        let content = UNMutableNotificationContent()
+        content.title = "" // Silent notification
+        content.body = ""
+        content.userInfo = ["type": "cleanup_trigger", "silent": true]
+        
+        // Create daily repeating trigger at midnight
+        let triggerComponents = calendar.dateComponents([.hour, .minute], from: nextMidnight)
+        let trigger = UNCalendarNotificationTrigger(
+            dateMatching: triggerComponents,
+            repeats: true // Daily repeat
+        )
+        
+        // Schedule the cleanup trigger
+        let request = UNNotificationRequest(
+            identifier: "daily.cleanup.trigger",
+            content: content,
+            trigger: trigger
+        )
+        
+        do {
+            try await notificationCenter.add(request)
+            print("✅ Scheduled daily notification cleanup at midnight")
+        } catch {
+            print("❌ Failed to schedule cleanup: \(error)")
+        }
+        
+        // Also perform immediate cleanup of old notifications
+        await cleanupOldMedicationNotifications()
+    }
+    
+    /// Clean up medication notifications older than their relevant period
+    nonisolated func cleanupOldMedicationNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        
+        // Get delivered notifications
+        let notifications = await center.deliveredNotifications()
+        
+        let calendar = Calendar.current
+        let now = Date()
+        var idsToRemove: [String] = []
+        
+        for notification in notifications {
+            let userInfo = notification.request.content.userInfo
+            let notificationDate = notification.date
+            
+            // Check if it's a medication notification
+            if let period = userInfo["period"] as? String {
+                var shouldRemove = false
+                
+                // Calculate cutoff times based on period
+                switch period {
+                case "morning":
+                    // Remove morning notifications after 12 PM same day
+                    if let cutoff = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: notificationDate),
+                       now > cutoff {
+                        shouldRemove = true
+                    }
+                case "afternoon":
+                    // Remove afternoon notifications after 6 PM same day
+                    if let cutoff = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: notificationDate),
+                       now > cutoff {
+                        shouldRemove = true
+                    }
+                case "evening":
+                    // Remove evening notifications after midnight
+                    if !calendar.isDateInToday(notificationDate) {
+                        shouldRemove = true
+                    }
+                default:
+                    // For any other notifications, remove if older than 24 hours
+                    if now.timeIntervalSince(notificationDate) > 86400 {
+                        shouldRemove = true
+                    }
+                }
+                
+                if shouldRemove {
+                    idsToRemove.append(notification.request.identifier)
+                }
+            } else {
+                // Non-medication notifications: remove if older than 24 hours
+                if now.timeIntervalSince(notificationDate) > 86400 {
+                    idsToRemove.append(notification.request.identifier)
+                }
+            }
+        }
+        
+        // Remove old notifications
+        if !idsToRemove.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: idsToRemove)
+            print("🧹 Cleaned up \(idsToRemove.count) old notifications")
+            
+            // Log which notifications were removed for debugging
+            for id in idsToRemove {
+                print("  - Removed: \(id)")
+            }
+        }
+    }
+    
+    /// Clean up all notifications from previous days (called at app launch)
+    nonisolated func cleanupPreviousDayNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        
+        // Get delivered notifications
+        let notifications = await center.deliveredNotifications()
+        
+        let calendar = Calendar.current
+        var idsToRemove: [String] = []
+        
+        for notification in notifications {
+            // Remove all notifications not from today
+            if !calendar.isDateInToday(notification.date) {
+                idsToRemove.append(notification.request.identifier)
+            }
+        }
+        
+        // Remove old notifications
+        if !idsToRemove.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: idsToRemove)
+            print("🧹 Cleaned up \(idsToRemove.count) notifications from previous days")
+        }
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
@@ -410,7 +552,16 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        // Always show notifications in foreground for important reminders
+        // Check if this is the cleanup trigger notification
+        let userInfo = notification.request.content.userInfo
+        if userInfo["type"] as? String == "cleanup_trigger" {
+            // Silent notification - perform cleanup but don't show
+            // Call nonisolated cleanup method directly
+            await cleanupOldMedicationNotifications()
+            return [] // Don't show this notification
+        }
+        
+        // Always show other notifications in foreground for important reminders
         return [.banner, .sound, .badge, .list]
     }
     
