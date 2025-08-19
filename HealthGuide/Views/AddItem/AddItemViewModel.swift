@@ -101,6 +101,9 @@ final class AddItemViewModel: ObservableObject {
             try await coreDataManager.saveMedication(medication)
             // Notifications will be scheduled lazily when user views dashboard
             
+            // Sync to cloud if in a group
+            await syncToCloudIfNeeded(medication: medication)
+            
         case .supplement:
             let supplement = Supplement(
                 name: name,
@@ -119,6 +122,37 @@ final class AddItemViewModel: ObservableObject {
                 schedule: schedule
             )
             try await coreDataManager.saveDiet(diet)
+        }
+    }
+    
+    // MARK: - Cloud Sync
+    private func syncToCloudIfNeeded(medication: Medication) async {
+        // Check if user is in a group
+        guard let activeGroupID = UserDefaults.standard.string(forKey: "activeGroupID") else {
+            // No active group, no sync needed
+            return
+        }
+        
+        // Sync medication to cloud
+        do {
+            let medicationData = MedicationData(
+                id: medication.id.uuidString,
+                name: medication.name,
+                dosage: medication.dosage,
+                frequency: medication.schedule.frequency.rawValue,
+                notes: medication.notes,
+                updatedBy: UserManager.shared.getOrCreateUserID().uuidString
+            )
+            
+            try await GroupSyncService.shared.syncMedication(
+                groupId: activeGroupID,
+                medication: medicationData,
+                action: .create
+            )
+            print("✅ Medication synced to cloud for group")
+        } catch {
+            print("⚠️ Failed to sync medication to cloud: \(error)")
+            // Continue even if sync fails - local data is saved
         }
     }
 }

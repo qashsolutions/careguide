@@ -15,11 +15,17 @@ struct ContentView: View {
     @EnvironmentObject private var biometricAuth: BiometricAuthManager
     @EnvironmentObject private var accessManager: AccessSessionManager
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @StateObject private var cloudTrialManager = CloudTrialManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     
     // Session start indicator
     @State private var showSessionStartIndicator = false
     @State private var sessionIndicatorScale: CGFloat = 0.5
     @State private var sessionIndicatorOpacity: Double = 0
+    
+    // Trial status modal
+    @State private var showTrialStatusModal = false
+    @AppStorage("lastTrialModalShownDate") private var lastTrialModalShownDate: String = ""
     
     // Debug counter to track view recreations
     static var appearCount = 0
@@ -28,8 +34,11 @@ struct ContentView: View {
     
     var body: some View {
         Group {
-            // Simplified check - reduce re-renders
-            if !accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
+            // Stop rendering when backgrounded to save CPU
+            if scenePhase == .background {
+                Color.clear
+                    .frame(width: 1, height: 1)
+            } else if !accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
                 DailyAccessLockView()
                     .onAppear {
                         print("⏱️ [VIEW] DailyAccessLockView appeared")
@@ -124,6 +133,45 @@ struct ContentView: View {
             if ContentView.appearCount > 3 {
                 print("⚠️ [PERF] WARNING: ContentView appeared \(ContentView.appearCount) times - possible view thrashing!")
             }
+            
+            // Check if we should show trial status modal
+            checkTrialStatusModal()
+        }
+        .sheet(isPresented: $showTrialStatusModal) {
+            TrialStatusModal(isPresented: $showTrialStatusModal)
+                .environmentObject(subscriptionManager)
+                .presentationDetents([.height(650), .large])  // Increased from 500 to 650 to show full content
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(cloudTrialManager.trialState?.isExpired ?? false) // Can't dismiss if expired
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func checkTrialStatusModal() {
+        // Only show for trial users or expired trials
+        guard let trialState = cloudTrialManager.trialState else { return }
+        
+        // Always show if trial is expired (hard paywall)
+        if trialState.isExpired {
+            showTrialStatusModal = true
+            return
+        }
+        
+        // Check if in trial
+        guard subscriptionManager.subscriptionState.isInTrial else { return }
+        
+        // Check if we've already shown the modal today
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+        
+        if lastTrialModalShownDate != today {
+            // Show modal after a short delay to not interfere with app launch
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                showTrialStatusModal = true
+                lastTrialModalShownDate = today
+            }
         }
     }
 }
@@ -147,8 +195,8 @@ struct SessionStartIndicator: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(.primary)
             
-            // Sessions remaining
-            Text("\(sessionsRemaining) sessions remaining")
+            // Trial status - now unlimited
+            Text("Unlimited trial access")
                 .font(.system(size: 16))
                 .foregroundColor(.secondary)
         }

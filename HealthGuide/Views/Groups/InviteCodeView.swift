@@ -299,12 +299,13 @@ final class InviteCodeViewModel: ObservableObject {
         do {
             switch mode {
             case .create:
-                // Get current user ID
-                let currentUserID = UserManager.shared.getOrCreateUserID()
+                // Get device ID for group ownership check
+                let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
+                let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
                 
-                // Check if user already owns a group - admins can only have 1 group
+                // Check if device already owns a group - admins can only have 1 group
                 let existingGroups = try await coreDataManager.fetchGroups()
-                let adminGroups = existingGroups.filter { $0.adminUserID == currentUserID }
+                let adminGroups = existingGroups.filter { $0.adminUserID == deviceUUID }
                 
                 if !adminGroups.isEmpty {
                     // User has existing group - show confirmation dialog
@@ -317,36 +318,73 @@ final class InviteCodeViewModel: ObservableObject {
                 await createNewGroup()
                 
             case .join:
-                // Verify the group exists with the provided invite code
-                guard let group = try await coreDataManager.findGroup(byInviteCode: joinCode) else {
-                    throw AppError.invalidInviteCode
+                // Get device ID for consistent tracking
+                let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
+                let memberName = UserDefaults.standard.string(forKey: "userName") ?? "Member"
+                
+                // Try to join from cloud first
+                do {
+                    if let cloudGroup = try await GroupSyncService.shared.joinGroupFromCloud(
+                        inviteCode: joinCode,
+                        memberId: deviceID,  // Use device ID directly
+                        memberName: memberName
+                    ) {
+                        // Create local group from cloud data
+                        var localGroup = CareGroup(
+                            id: UUID(uuidString: cloudGroup.id) ?? UUID(),
+                            name: cloudGroup.name,
+                            adminUserID: UUID(uuidString: cloudGroup.admin_id) ?? UUID(),  // Fix: Convert String to UUID
+                            settings: GroupSettings.default
+                        )
+                        // Preserve the invite code from cloud
+                        localGroup.inviteCode = cloudGroup.invite_code
+                        
+                        // Save locally
+                        try await coreDataManager.saveGroup(localGroup)
+                        
+                        // Add member locally with device ID
+                        try await coreDataManager.addMemberToGroup(
+                            groupId: localGroup.id,
+                            userId: UUID(uuidString: deviceID) ?? UUID(),  // Store device ID as user ID
+                            name: memberName,
+                            phone: ""
+                        )
+                        
+                        createdGroup = localGroup
+                        groupCreated = true
+                        print("✅ Joined group from cloud")
+                    }
+                } catch {
+                    // Fallback to local-only join
+                    print("⚠️ Cloud join failed, trying local: \(error)")
+                    
+                    // Verify the group exists locally
+                    guard let group = try await coreDataManager.findGroup(byInviteCode: joinCode) else {
+                        throw AppError.invalidInviteCode
+                    }
+                    
+                    // Check if group is full (3 member limit)
+                    if group.memberCount >= 3 {
+                        throw AppError.groupFull(maxMembers: 3)
+                    }
+                    
+                    // Check if user is already in the group (by device ID)
+                    let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
+                    if group.members.contains(where: { $0.userID == deviceUUID }) || group.adminUserID == deviceUUID {
+                        throw AppError.alreadyInGroup
+                    }
+                    
+                    // Add member locally with device ID
+                    try await coreDataManager.addMemberToGroup(
+                        groupId: group.id,
+                        userId: deviceUUID,  // Store device ID as user ID
+                        name: memberName,
+                        phone: ""
+                    )
+                    
+                    createdGroup = group
+                    groupCreated = true
                 }
-                
-                
-                // Check if group is full (3 member limit)
-                if group.memberCount >= 3 {
-                    throw AppError.groupFull(maxMembers: 3)
-                }
-                
-                // Get current user ID
-                let currentUserID = UserManager.shared.getOrCreateUserID()
-                
-                // Check if user is already in the group
-                if group.members.contains(where: { $0.userID == currentUserID }) || group.adminUserID == currentUserID {
-                    throw AppError.alreadyInGroup
-                }
-                
-                // Add member directly to Core Data
-                try await coreDataManager.addMemberToGroup(
-                    groupId: group.id,
-                    userId: currentUserID,
-                    name: "Member", // User can update this later
-                    phone: "" // User can add this later
-                )
-                
-                // Store the joined group for setting as active
-                createdGroup = group
-                groupCreated = true
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -360,17 +398,32 @@ final class InviteCodeViewModel: ObservableObject {
     
     func createNewGroup() async {
         do {
-            let currentUserID = UserManager.shared.getOrCreateUserID()
+            // Get device ID instead of random UUID
+            let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
+            let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
             
-            // Create new group with default settings
+            // Create new group with device ID as admin ID
             let newGroup = CareGroup(
                 name: groupName,
-                adminUserID: currentUserID,
+                adminUserID: deviceUUID,  // This is now the device ID
                 settings: GroupSettings.default
             )
             
-            // Save the group
+            // Save the group locally
             try await coreDataManager.saveGroup(newGroup)
+            
+            // Sync to cloud
+            do {
+                try await GroupSyncService.shared.createGroupInCloud(
+                    name: groupName,
+                    inviteCode: newGroup.inviteCode,
+                    adminId: deviceID  // Use device ID directly
+                )
+                print("✅ Group synced to cloud")
+            } catch {
+                print("⚠️ Failed to sync group to cloud: \(error)")
+                // Continue even if cloud sync fails - local group is created
+            }
             
             // Update state
             generatedCode = newGroup.inviteCode

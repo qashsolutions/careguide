@@ -17,6 +17,7 @@ struct DocumentsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var accessManager = AccessSessionManager.shared
+    @StateObject private var permissionManager = PermissionManager.shared
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \DocumentCategoryEntity.name, ascending: true)],
@@ -37,6 +38,7 @@ struct DocumentsView: View {
     @State private var capturedImageToSave: UIImage?
     @State private var showUpgradeAlert = false
     @State private var hasLoadedCategories = false
+    @State private var showNoPermissionAlert = false
     
     var body: some View {
         NavigationStack {
@@ -73,7 +75,10 @@ struct DocumentsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button(action: { 
-                            if subscriptionManager.subscriptionState.isActive || subscriptionManager.subscriptionState.isInTrial {
+                            // Check permissions first
+                            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                                showNoPermissionAlert = true
+                            } else if subscriptionManager.subscriptionState.isActive || subscriptionManager.subscriptionState.isInTrial {
                                 showFilePicker = true 
                             } else {
                                 // Track document view for basic users
@@ -85,7 +90,10 @@ struct DocumentsView: View {
                         }
                         
                         Button(action: { 
-                            if subscriptionManager.subscriptionState.isActive || subscriptionManager.subscriptionState.isInTrial {
+                            // Check permissions first
+                            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                                showNoPermissionAlert = true
+                            } else if subscriptionManager.subscriptionState.isActive || subscriptionManager.subscriptionState.isInTrial {
                                 showCamera = true 
                             } else {
                                 // Track document view for basic users
@@ -177,6 +185,11 @@ struct DocumentsView: View {
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("Document upload and download is a premium feature. Basic users can view existing documents but cannot add new ones.")
+            }
+            .alert("View Only Access", isPresented: $showNoPermissionAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Contact your group admin to make changes")
             }
             .tint(Color.blue)  // Force blue tint for button text visibility
             .fullScreenCover(item: $selectedCategoryForViewing) { category in

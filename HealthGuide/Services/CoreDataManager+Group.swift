@@ -104,6 +104,45 @@ extension CoreDataManager {
         }
     }
     
+    /// Fetch group permissions data (Sendable-safe)
+    struct GroupPermissionData: Sendable {
+        let groupID: UUID
+        let adminDeviceID: String?
+        let members: [MemberPermissionData]
+    }
+    
+    struct MemberPermissionData: Sendable {
+        let userID: String?
+        let role: String?
+    }
+    
+    /// Fetch group permission data by ID (Swift 6 Sendable-safe)
+    func fetchGroupPermissions(by id: UUID) async throws -> GroupPermissionData? {
+        try await context.perform { [context] in
+            let request = CareGroupEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            request.relationshipKeyPathsForPrefetching = ["members"]
+            
+            guard let entity = try context.fetch(request).first else {
+                return nil
+            }
+            
+            // Extract only the data we need (all Sendable types)
+            let members = (entity.members as? Set<GroupMemberEntity>)?.compactMap { member in
+                MemberPermissionData(
+                    userID: member.userID?.uuidString,
+                    role: member.role
+                )
+            } ?? []
+            
+            return GroupPermissionData(
+                groupID: id,
+                adminDeviceID: entity.adminUserID?.uuidString,
+                members: members
+            )
+        }
+    }
+    
     /// Find a group by invite code
     func findGroup(byInviteCode code: String) async throws -> CareGroup? {
         try await context.perform { [context] in

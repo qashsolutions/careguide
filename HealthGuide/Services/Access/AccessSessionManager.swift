@@ -26,6 +26,7 @@ final class AccessSessionManager: ObservableObject {
     // MARK: - Private Properties
     private let persistenceController = PersistenceController.shared
     private let deviceCheckManager = DeviceCheckManager.shared
+    private let cloudTrialManager = CloudTrialManager.shared
     private var backgroundTime: Date?
     private let gracePeriod: TimeInterval = 300 // 5 minutes
     private weak var accessCheckTimer: Timer?
@@ -59,6 +60,9 @@ final class AccessSessionManager: ObservableObject {
     func configure() async {
         guard !isConfigured else { return }
         isConfigured = true
+        
+        // CloudKit trial initialization happens in HealthGuideApp
+        // Just setup notifications and check access here
         
         setupNotifications()
         await checkAccess(subscriptionState: nil)
@@ -94,20 +98,27 @@ final class AccessSessionManager: ObservableObject {
             currentSubscriptionState = isConfigured ? SubscriptionManager.shared.subscriptionState : .none
         }
         
-        // Trial users check session bank
+        // Trial users have unlimited access for 14 days
         if currentSubscriptionState.isInTrial {
-            // Check if sessions remain in the 30-session bank
-            let subscriptionManager = SubscriptionManager.shared
-            if subscriptionManager.hasTrialSessionsAvailable {
-                canAccess = true
-                isCheckingAccess = false
-                print("🎉 Trial user - \(subscriptionManager.trialSessionsRemaining) sessions remaining")
-                return
+            // Check trial state from CloudTrialManager (CloudKit + local)
+            if let trialState = cloudTrialManager.trialState {
+                if trialState.isValid {
+                    canAccess = true
+                    isCheckingAccess = false
+                    print("🎉 Trial user - Day \(trialState.daysUsed) of 14 (unlimited access)")
+                    return
+                } else if trialState.requiresPayment {
+                    // Trial expired - hard paywall
+                    canAccess = false
+                    isCheckingAccess = false
+                    print("❌ Trial expired - Payment required (Day 14+)")
+                    return
+                }
             } else {
-                // Out of sessions - need to subscribe
+                // No trial state found - shouldn't happen but handle gracefully
                 canAccess = false
                 isCheckingAccess = false
-                print("❌ Trial user - No sessions remaining (used \(subscriptionManager.trialSessionsUsed)/30)")
+                print("⚠️ No trial state found in CloudKit")
                 return
             }
         }
@@ -165,11 +176,19 @@ final class AccessSessionManager: ObservableObject {
         // Don't start multiple sessions
         if currentSession?.isActive == true { return }
         
-        // Deduct from trial session bank if in trial
+        // Record trial access (no deduction for unlimited 14-day trial)
         let subscriptionManager = SubscriptionManager.shared
         if subscriptionManager.subscriptionState.isInTrial {
-            subscriptionManager.useTrialSession()
-            print("🎫 Trial session deducted - Remaining: \(subscriptionManager.trialSessionsRemaining)")
+            // Just log the access for analytics
+            if let trialState = cloudTrialManager.trialState {
+                print("🎫 Trial access recorded - Day \(trialState.daysUsed) of 14")
+                
+                // Check if should show payment modal
+                if trialState.shouldShowPaymentModal {
+                    print("💳 User should see payment modal")
+                    // UI will handle showing the modal
+                }
+            }
         }
         
         let context = persistenceController.container.viewContext

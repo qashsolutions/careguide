@@ -276,8 +276,11 @@ struct GroupCardView: View {
     
     @State private var showShareView = false
     
-    private var isAdmin: Bool {
-        group.adminUserID == UserManager.shared.getOrCreateUserID()
+    @State private var isAdmin: Bool = false
+    
+    private func checkIfAdmin() async {
+        let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
+        isAdmin = group.adminUserID?.uuidString == deviceID
     }
     
     var body: some View {
@@ -372,6 +375,9 @@ struct GroupCardView: View {
         .disabled(!isActive)
         .sheet(isPresented: $showShareView) {
             ShareInviteView(group: group)
+        }
+        .task {
+            await checkIfAdmin()
         }
     }
 }

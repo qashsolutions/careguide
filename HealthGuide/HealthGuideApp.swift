@@ -14,6 +14,7 @@ struct HealthGuideApp: App {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var medicationScheduler = MedicationNotificationScheduler.shared
     @State private var isInitialized = false
+    @State private var isInBackground = false
     @Environment(\.scenePhase) var scenePhase
     
     let persistenceController = PersistenceController.shared
@@ -56,27 +57,66 @@ struct HealthGuideApp: App {
         let signpostState = AppLogger.signpost.beginInterval("AppInitialization", id: signpostID)
         let startTime = Date()
         
-        // 1. Skip SubscriptionManager init - let it initialize lazily when needed
-        AppLogger.performance.debug("SubscriptionManager init deferred for faster launch")
+        // 1. Initialize SubscriptionManager to load products
+        AppLogger.performance.debug("Initializing SubscriptionManager...")
+        await SubscriptionManager.shared.initialize()
         
         // 2. Configure AccessSessionManager
         let accessStart = Date()
         await accessManager.configure()
         AppLogger.performance.debug("AccessSessionManager configured in \(Date().timeIntervalSince(accessStart))s")
         
-        // 3. Auto-start trial on first launch
-        if !UserDefaults.standard.bool(forKey: "app.hasLaunchedBefore") {
-            AppLogger.main.info("First launch detected - starting free trial")
-            await subscriptionManager.startFreeTrial()
-            UserDefaults.standard.set(true, forKey: "app.hasLaunchedBefore")
-            AppLogger.main.info("Trial auto-started with 30 sessions")
+        // 3. Handle trial initialization with CloudKit-based manager
+        let cloudTrialManager = CloudTrialManager.shared
+        
+        do {
+            // Initialize CloudKit trial management
+            try await cloudTrialManager.initialize()
+            
+            if let existingTrial = cloudTrialManager.trialState {
+                // Trial exists (from CloudKit or local)
+                AppLogger.main.info("Existing trial found - Day \(existingTrial.daysUsed) of 14")
+                
+                // Sync with SubscriptionManager for UI
+                if existingTrial.isValid {
+                    await subscriptionManager.setTrialState(
+                        startDate: existingTrial.startDate,
+                        endDate: existingTrial.expiryDate,
+                        sessionsUsed: 0,  // Not used in unlimited trial
+                        sessionsRemaining: 999  // Unlimited during trial
+                    )
+                }
+            } else if !UserDefaults.standard.bool(forKey: "app.hasLaunchedBefore") {
+                // Genuinely first launch - start new trial
+                AppLogger.main.info("First launch detected - starting free trial")
+                
+                do {
+                    // Start new trial with CloudKit sync
+                    _ = try await cloudTrialManager.startNewTrial()
+                    
+                    // Also update SubscriptionManager for UI consistency
+                    await subscriptionManager.startFreeTrial()
+                    subscriptionManager.trialSessionsRemaining = 999  // Unlimited
+                    subscriptionManager.trialSessionsUsed = 0
+                    
+                    UserDefaults.standard.set(true, forKey: "app.hasLaunchedBefore")
+                    AppLogger.main.info("14-day unlimited trial started and synced to CloudKit")
+                } catch {
+                    AppLogger.main.error("Failed to start trial: \(error)")
+                }
+            } else {
+                // Load existing subscription status
+                await subscriptionManager.checkSubscriptionStatus()
+            }
+            
             AppLogger.main.info("Trial state: \(subscriptionManager.subscriptionState.displayName)")
-            AppLogger.main.info("Sessions remaining: \(subscriptionManager.trialSessionsRemaining)")
-        } else {
-            // Load existing trial session data if in trial
-            await subscriptionManager.checkSubscriptionStatus()
-            AppLogger.main.info("Subscription state: \(subscriptionManager.subscriptionState.displayName)")
-            AppLogger.main.info("Sessions remaining: \(subscriptionManager.trialSessionsRemaining)")
+            if let trial = cloudTrialManager.trialState {
+                AppLogger.main.info("Trial day \(trial.daysUsed) of 14")
+            }
+        } catch {
+            AppLogger.main.error("CloudKit initialization failed: \(error)")
+            // Fall back to local-only trial management
+            AppLogger.main.info("Falling back to local trial management")
         }
         
         // 4. Clean up old notifications and schedule daily cleanup
@@ -105,41 +145,62 @@ struct HealthGuideApp: App {
         switch newPhase {
         case .active:
             AppLogger.main.info("App became active")
-            // Restart subscription transaction listener
-            Task {
-                await SubscriptionManager.shared.initialize()
-            }
             
-            // Start periodic badge updates
-            Task { @MainActor in
-                BadgeManager.shared.startUpdates()
-                await BadgeManager.shared.updateBadgeForCurrentPeriod()
-            }
+            // Mark as no longer in background
+            isInBackground = false
             
-            // Clean up old notifications when app becomes active
-            Task {
-                await NotificationManager.shared.cleanupOldMedicationNotifications()
+            // Restore if coming from background
+            if oldPhase == .background {
+                // Resume SubscriptionManager after cleanup
+                Task {
+                    await SubscriptionManager.shared.resume()
+                    AppLogger.main.info("✅ SubscriptionManager resumed after background")
+                }
+                
+                // Update badge
+                Task { @MainActor in
+                    await BadgeManager.shared.updateBadgeForCurrentPeriod()
+                }
             }
             
         case .inactive:
             AppLogger.main.debug("App became inactive")
-            // App is transitioning, don't do heavy cleanup yet
+            // Don't cleanup here - Face ID and other system dialogs cause inactive state
+            // Only cleanup when actually going to background
             
         case .background:
-            AppLogger.main.info("App entering background - pausing operations")
+            AppLogger.main.info("App entering background - pausing ALL operations")
             
+            // IMMEDIATELY mark as in background to stop rendering
+            isInBackground = true
+            
+            // CRITICAL: Stop everything synchronously and immediately
             // Stop badge updates to prevent CPU usage in background
             BadgeManager.shared.stopPeriodicUpdates()
             
             // Stop subscription transaction listener (CRITICAL!)
             SubscriptionManager.shared.cleanup()
             
-            // Clean up keyboard to prevent RTIInputSystemClient errors
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            
             // Pause other periodic tasks
             AccessSessionManager.shared.cleanup()
             MemoryMonitor.shared.cleanup()
+            
+            // Stop any audio sessions
+            AudioManager.shared.cleanup()
+            
+            // Cancel any pending notifications
+            MedicationNotificationScheduler.shared.cleanup()
+            
+            // Clean up keyboard to prevent RTIInputSystemClient errors
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            
+            // Force stop SwiftUI updates - this is the key to stopping the 109% CPU
+            ProcessInfo.processInfo.performExpiringActivity(withReason: "BackgroundCleanup") { expired in
+                if !expired {
+                    // Suspend the main run loop momentarily
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.001))
+                }
+            }
             
             AppLogger.main.debug("Background cleanup complete")
             
@@ -179,15 +240,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         AppLogger.main.info("App became active")
         
-        // Restart subscription transaction listener
-        Task {
-            await SubscriptionManager.shared.initialize()
-        }
-        
+        // Don't re-initialize - this is handled in scene phase
+        // Just update the badge
         DispatchQueue.main.async {
             Task {
-                // Start periodic badge updates when app becomes active
-                BadgeManager.shared.startUpdates()
                 await BadgeManager.shared.updateBadgeForCurrentPeriod()
             }
         }
@@ -196,6 +252,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// Handle app entering background - pause expensive operations
     func applicationDidEnterBackground(_ application: UIApplication) {
         AppLogger.main.info("App entering background - pausing operations")
+        
+        // Create a background task to ensure cleanup completes
+        var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+        backgroundTask = application.beginBackgroundTask {
+            // End the background task if it expires
+            application.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
         
         // Stop badge updates to prevent CPU usage in background
         BadgeManager.shared.stopPeriodicUpdates()
@@ -209,6 +273,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Pause other periodic tasks
         AccessSessionManager.shared.cleanup()
         MemoryMonitor.shared.cleanup()
+        
+        // Force all dispatch queues to pause
+        DispatchQueue.main.async {
+            // End background task after cleanup
+            application.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
         
         AppLogger.main.debug("Background cleanup complete")
     }

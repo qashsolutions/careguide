@@ -15,6 +15,7 @@ struct CareMemosView: View {
     @Environment(\.scenePhase) var scenePhase
     @StateObject private var audioManager = AudioManager.shared
     @StateObject private var viewModel = CareMemosViewModel()
+    @StateObject private var permissionManager = PermissionManager.shared
     
     @State private var showingDeleteAlert = false
     @State private var memoToDelete: CareMemo?
@@ -22,6 +23,7 @@ struct CareMemosView: View {
     @State private var showingTitleDialog = false
     @State private var memoTitle = ""
     @State private var pendingRecordingResult: (url: URL, duration: TimeInterval)?
+    @State private var showNoPermissionAlert = false
     
     var body: some View {
         NavigationStack {
@@ -108,6 +110,11 @@ struct CareMemosView: View {
                     stopRecording()
                 }
                 audioManager.cleanup()
+            }
+            .alert("View Only Access", isPresented: $showNoPermissionAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Contact your group admin to make changes")
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .background {
@@ -264,7 +271,12 @@ struct CareMemosView: View {
         if audioManager.isRecording {
             stopRecording()
         } else {
-            startRecording()
+            // Check permissions before recording
+            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                showNoPermissionAlert = true
+            } else {
+                startRecording()
+            }
         }
     }
     

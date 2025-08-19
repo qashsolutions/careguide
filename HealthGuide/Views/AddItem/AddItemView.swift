@@ -12,7 +12,9 @@ import SwiftUI
 struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = AddItemViewModel()
+    @StateObject private var permissionManager = PermissionManager.shared
     @FocusState private var focusedField: Field?
+    @State private var showNoPermissionAlert = false
     
     enum Field {
         case name, dosage, notes
@@ -34,6 +36,21 @@ struct AddItemView: View {
                 
                 ScrollView {
                     VStack(spacing: AppTheme.Spacing.large) {
+                        // Show view-only banner if user can't edit
+                        if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                            HStack {
+                                Image(systemName: "eye")
+                                Text("View Only - Contact admin to make changes")
+                                    .font(.monaco(AppTheme.Typography.footnote))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, AppTheme.Spacing.medium)
+                            .padding(.vertical, AppTheme.Spacing.small)
+                            .background(AppTheme.Colors.warningOrange)
+                            .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
+                            .padding(.horizontal, AppTheme.Spacing.screenPadding)
+                        }
+                        
                         ItemTypeSelector(selectedType: $viewModel.itemType)
                             .padding(.horizontal, AppTheme.Spacing.screenPadding)
                         
@@ -209,7 +226,14 @@ struct AddItemView: View {
     // MARK: - Add Button
     
     private var addButton: some View {
-        Button(action: viewModel.saveItem) {
+        Button(action: {
+            // Check permissions first
+            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                showNoPermissionAlert = true
+            } else {
+                viewModel.saveItem()
+            }
+        }) {
             Text(viewModel.canAdd ? addButtonTitle : "Complete Required Fields")
                 .font(.monaco(AppTheme.ElderTypography.callout))
                 .fontWeight(AppTheme.Typography.semibold)
@@ -230,6 +254,11 @@ struct AddItemView: View {
         )
         .accessibilityLabel(viewModel.canAdd ? "Add item" : "Complete required fields")
         .accessibilityHint(viewModel.canAdd ? "Saves the health item to your schedule" : "Fill in all required fields to enable")
+        .alert("View Only Access", isPresented: $showNoPermissionAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Contact your group admin to make changes")
+        }
     }
     
     private var buttonBackground: some View {

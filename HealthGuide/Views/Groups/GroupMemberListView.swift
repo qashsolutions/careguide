@@ -108,7 +108,8 @@ struct GroupMemberListView: View {
             
             VStack(spacing: AppTheme.Spacing.small) {
                 HStack(spacing: AppTheme.Spacing.small) {
-                    ForEach(Array(group.inviteCode ?? ""), id: \.self) { digit in
+                    ForEach(Array(group.inviteCode ?? "").indices, id: \.self) { index in
+                        let digit = Array(group.inviteCode ?? "")[index]
                         Text(String(digit))
                             .font(.monaco(AppTheme.Typography.title))
                             .fontWeight(AppTheme.Typography.bold)

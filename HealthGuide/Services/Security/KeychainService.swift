@@ -21,16 +21,29 @@ actor KeychainService {
         case device = "com.healthguide.device"     // Device tracking (survives deletion)
         case subscription = "com.healthguide.subscription" // Subscription data
         case user = "com.healthguide.user"         // User credentials
+        case trial = "com.healthguide.trial"       // Trial persistence (survives deletion)
         
         var accessLevel: String {
             switch self {
-            case .device:
-                // Device tracking needs to survive app deletion
-                // Use AfterFirstUnlock for maximum persistence
-                return kSecAttrAccessibleAfterFirstUnlock as String
+            case .device, .trial:
+                // Device tracking and trial data need to survive app deletion
+                // Use AfterFirstUnlockThisDeviceOnly for maximum persistence
+                // "ThisDeviceOnly" prevents iCloud Keychain sync
+                return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
             case .api, .subscription, .user:
                 // More secure for sensitive data
                 return kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
+            }
+        }
+        
+        var isSynchronizable: Bool {
+            switch self {
+            case .device, .trial:
+                // Never sync device-specific data to iCloud
+                return false
+            case .api, .subscription, .user:
+                // Allow sync for user convenience (optional)
+                return false // Set to false for now for security
             }
         }
     }
@@ -86,7 +99,7 @@ actor KeychainService {
     
     /// Store data in the keychain
     func setData(_ data: Data, for key: String, service: Service) async throws {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service.rawValue,
             kSecAttrAccount as String: key,
@@ -94,17 +107,22 @@ actor KeychainService {
             kSecAttrAccessible as String: service.accessLevel
         ]
         
+        // Add synchronizable flag to prevent iCloud sync for device-specific data
+        query[kSecAttrSynchronizable as String] = service.isSynchronizable
+        
         // Try to update existing item first
-        let updateQuery: [String: Any] = [
+        var updateQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service.rawValue,
             kSecAttrAccount as String: key
         ]
+        updateQuery[kSecAttrSynchronizable as String] = service.isSynchronizable
         
-        let updateAttributes: [String: Any] = [
+        var updateAttributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: service.accessLevel
         ]
+        updateAttributes[kSecAttrSynchronizable as String] = service.isSynchronizable
         
         var status = SecItemUpdate(updateQuery as CFDictionary, updateAttributes as CFDictionary)
         
@@ -123,13 +141,14 @@ actor KeychainService {
     
     /// Retrieve data from the keychain
     func getData(for key: String, service: Service) async throws -> Data? {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service.rawValue,
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        query[kSecAttrSynchronizable as String] = service.isSynchronizable
         
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)

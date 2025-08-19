@@ -86,6 +86,7 @@ struct DocumentDetailView: View {
             } message: {
                 Text("Are you sure you want to delete \"\(document.displayName)\"? This action cannot be undone.")
             }
+            .tint(AppTheme.Colors.primaryBlue) // Fix: Makes cancel button visible with blue color
             .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { }
             } message: {

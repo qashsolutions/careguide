@@ -194,6 +194,8 @@ final class SubscriptionManager: ObservableObject {
     // MARK: - Private Properties
     private var updateListenerTask: Task<Void, Never>?
     private let userDefaults = UserDefaults.standard
+    private var isInitialized = false
+    private var isBackgrounded = false
     
     // Computed property for trial status
     private var hasUsedTrial: Bool {
@@ -203,6 +205,7 @@ final class SubscriptionManager: ObservableObject {
     // UserDefaults Keys
     private enum UserDefaultsKeys {
         static let trialStartDate = "subscription.trial.startDate"
+        static let trialEndDate = "subscription.trial.endDate"
         static let subscriptionStartDate = "subscription.startDate"
         static let cancellationDate = "subscription.cancellationDate"
         static let hasUsedTrial = "subscription.hasUsedTrial"
@@ -221,6 +224,13 @@ final class SubscriptionManager: ObservableObject {
     /// Initialize the subscription manager - call after app is ready
     func initialize() async {
         print("🛍️ Initializing SubscriptionManager...")
+        
+        // Prevent multiple initializations
+        guard !isInitialized else {
+            print("⚠️ SubscriptionManager already initialized - skipping")
+            return
+        }
+        isInitialized = true
         
         // Check if we're in simulator without Apple ID
         #if targetEnvironment(simulator)
@@ -297,9 +307,21 @@ final class SubscriptionManager: ObservableObject {
     
     /// Setup StoreKit components
     private func setupStoreKit() async {
+        // Skip if backgrounded
+        guard !isBackgrounded else {
+            print("🛑 Skipping StoreKit setup - app is backgrounded")
+            return
+        }
+        
         // First, check for any unfinished transactions from previous sessions
         print("🔍 Checking for unfinished transactions...")
         for await result in StoreKit.Transaction.unfinished {
+            // Check if backgrounded
+            if isBackgrounded {
+                print("🛑 App backgrounded - stopping unfinished transaction processing")
+                break
+            }
+            
             do {
                 let transaction = try await self.verifyTransaction(result)
                 print("⚠️ Found unfinished transaction: \(transaction.id)")
@@ -313,23 +335,53 @@ final class SubscriptionManager: ObservableObject {
         
         // Setup transaction listener with error handling
         await MainActor.run {
-            self.updateListenerTask = Task {
-                // Listen for transaction updates
-                for await result in StoreKit.Transaction.updates {
-                    do {
-                        let transaction = try await self.verifyTransaction(result)
-                        await self.handleTransactionUpdate(transaction)
-                        await transaction.finish()
-                    } catch {
-                        // Handle transaction errors gracefully
-                        if (error as NSError).code == 509 {
-                            print("⚠️ No active Apple ID account - transactions unavailable")
-                            break // Exit the loop
-                        } else {
-                            print("❌ Transaction update error: \(error)")
+            self.updateListenerTask = Task { [weak self] in
+                print("🎧 Starting transaction listener")
+                
+                // Create a sub-task for the actual listening that we can cancel
+                let listenTask = Task { [weak self] in
+                    guard let self = self else { return }
+                    
+                    // Listen for transaction updates
+                    for await result in StoreKit.Transaction.updates {
+                        // Multiple cancellation checks for faster response
+                        if Task.isCancelled {
+                            print("🛑 Transaction listener cancelled (1) - stopping")
+                            break
+                        }
+                        
+                        // Don't process transactions if not initialized or backgrounded
+                        guard self.isInitialized && !self.isBackgrounded else {
+                            print("🛑 App not active or backgrounded - breaking from transaction loop")
+                            break  // Exit loop when backgrounded
+                        }
+                        
+                        do {
+                            // Check again before processing
+                            if Task.isCancelled {
+                                print("🛑 Transaction listener cancelled (2) - stopping")
+                                break
+                            }
+                            
+                            let transaction = try await self.verifyTransaction(result)
+                            await self.handleTransactionUpdate(transaction)
+                            await transaction.finish()
+                        } catch {
+                            // Handle transaction errors gracefully
+                            if (error as NSError).code == 509 {
+                                print("⚠️ No active Apple ID account - transactions unavailable")
+                                break // Exit the loop
+                            } else {
+                                print("❌ Transaction update error: \(error)")
+                            }
                         }
                     }
+                    print("✅ Transaction listener loop ended cleanly")
                 }
+                
+                // Wait for either the listen task to complete or cancellation
+                await listenTask.value
+                print("✅ Transaction listener task completed")
             }
         }
     }
@@ -348,12 +400,43 @@ final class SubscriptionManager: ObservableObject {
         }
     }
     
-    /// Clean up resources when app terminates
+    /// Clean up resources when app terminates or backgrounds
     func cleanup() {
         print("🧹 SubscriptionManager cleanup - cancelling transaction listener")
-        updateListenerTask?.cancel()
-        updateListenerTask = nil
+        
+        // Set flags first to prevent any new operations
+        isInitialized = false
+        isProcessingPayment = false
+        isBackgrounded = true
+        
+        // Cancel the task with explicit nil assignment
+        let task = updateListenerTask
+        updateListenerTask = nil  // Clear reference immediately
+        task?.cancel()  // Then cancel
+        
+        if task != nil {
+            print("🧹 Transaction listener task cancelled and reference cleared")
+        }
+        
         print("🧹 Cleanup complete")
+    }
+    
+    /// Resume when app becomes active
+    func resume() async {
+        print("📱 SubscriptionManager resuming...")
+        isBackgrounded = false
+        
+        // Always re-initialize after cleanup to reload products
+        if !isInitialized {
+            print("🔄 Re-initializing SubscriptionManager after background...")
+            await initialize()
+        } else {
+            // Even if initialized, reload products in case they were cleared
+            print("📦 Reloading products after resume...")
+            await loadProducts()
+        }
+        
+        print("✅ SubscriptionManager resumed")
     }
     
     deinit {
@@ -472,6 +555,25 @@ final class SubscriptionManager: ObservableObject {
     /// Check if user has sessions available in trial
     var hasTrialSessionsAvailable: Bool {
         return subscriptionState.isInTrial && trialSessionsRemaining > 0
+    }
+    
+    /// Set trial state from persistent storage (for sync)
+    func setTrialState(startDate: Date, endDate: Date, sessionsUsed: Int, sessionsRemaining: Int) async {
+        // Update internal state
+        self.trialSessionsUsed = sessionsUsed
+        self.trialSessionsRemaining = sessionsRemaining
+        
+        // Update subscription state
+        subscriptionState = .trial(startDate: startDate, endDate: endDate)
+        
+        // Update UserDefaults for backward compatibility
+        userDefaults.set(startDate, forKey: UserDefaultsKeys.trialStartDate)
+        userDefaults.set(endDate, forKey: UserDefaultsKeys.trialEndDate)
+        userDefaults.set(sessionsRemaining, forKey: UserDefaultsKeys.trialSessionsRemaining)
+        userDefaults.set(sessionsUsed, forKey: UserDefaultsKeys.trialSessionsUsed)
+        userDefaults.set(true, forKey: UserDefaultsKeys.hasUsedTrial)
+        
+        print("📝 Trial state synced from persistent storage - Sessions: \(sessionsUsed)/30")
     }
     
     /// Purchase subscription

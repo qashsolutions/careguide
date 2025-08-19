@@ -21,6 +21,8 @@ struct ContactsView: View {
     @State private var showAddContact = false
     @State private var searchText = ""
     @State private var selectedContact: ContactEntity?
+    @State private var showNoPermissionAlert = false
+    @StateObject private var permissionManager = PermissionManager.shared
     
     var body: some View {
         NavigationStack {
@@ -126,7 +128,13 @@ struct ContactsView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
-            Button(action: { showAddContact = true }) {
+            Button(action: { 
+                if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                    showNoPermissionAlert = true
+                } else {
+                    showAddContact = true
+                }
+            }) {
                 Label("Add First Contact", systemImage: "plus.circle.fill")
                     .font(.monaco(AppTheme.ElderTypography.callout))
                     .fontWeight(AppTheme.Typography.semibold)
@@ -157,7 +165,13 @@ struct ContactsView: View {
     }
     
     private var addContactButton: some View {
-        Button(action: { showAddContact = true }) {
+        Button(action: { 
+            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                showNoPermissionAlert = true
+            } else {
+                showAddContact = true
+            }
+        }) {
             Image(systemName: "plus")
                 .font(.system(size: AppTheme.ElderTypography.headline))
                 .foregroundColor(AppTheme.Colors.primaryBlue)
@@ -165,6 +179,11 @@ struct ContactsView: View {
                     minWidth: AppTheme.Dimensions.minimumTouchTarget,
                     minHeight: AppTheme.Dimensions.minimumTouchTarget
                 )
+        }
+        .alert("View Only Access", isPresented: $showNoPermissionAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Contact your group admin to make changes")
         }
     }
     

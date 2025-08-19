@@ -50,6 +50,14 @@ final class AudioManager: NSObject, ObservableObject, @unchecked Sendable {
         audioQueue.async { [weak self] in
             self?.setupAudioSession()
         }
+        
+        // Listen for app lifecycle to clean up when backgrounded
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
     }
     
     // MARK: - Setup
@@ -323,6 +331,16 @@ final class AudioManager: NSObject, ObservableObject, @unchecked Sendable {
                 continuation.resume(returning: granted)
             }
         }
+    }
+    
+    // MARK: - App Lifecycle
+    
+    @objc private func appDidEnterBackground() {
+        print("🔊 AudioManager: App entering background - stopping all audio")
+        // Stop any ongoing recording or playback
+        _ = stopRecording()
+        stopPlayback()
+        cleanup()
     }
     
     // MARK: - Cleanup
