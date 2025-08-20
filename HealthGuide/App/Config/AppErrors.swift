@@ -14,6 +14,9 @@ enum AppError: LocalizedError {
     // MARK: - Health Data Errors
     case medicationLimitExceeded(current: Int, maximum: Int)
     case supplementLimitExceeded(current: Int, maximum: Int)
+    case dietLimitExceeded(current: Int, maximum: Int)
+    case mealLimitExceeded(mealType: String, current: Int, maximum: Int)
+    case frequencyLimitExceeded(itemType: String, requestedFrequency: Int, maximum: Int)
     case invalidSchedule(reason: String)
     case duplicateMedication(name: String)
     case invalidDosage(medication: String)
@@ -52,6 +55,12 @@ enum AppError: LocalizedError {
     case notGroupAdmin
     case alreadyInGroup
     
+    // MARK: - Firebase Errors
+    case notAuthenticated
+    case groupNotSet
+    case firebasePermissionDenied
+    case firebaseSyncFailed(reason: String)
+    
     // MARK: - Validation Errors
     case nameTooShort(minimum: Int)
     case nameTooLong(maximum: Int)
@@ -74,7 +83,16 @@ enum AppError: LocalizedError {
             return "Cannot add medication. You have \(current) doses scheduled today. Maximum \(maximum) doses per day allowed for safety."
             
         case .supplementLimitExceeded(let current, let maximum):
-            return "Cannot add supplement. You have \(current) doses scheduled today. Maximum \(maximum) doses per day allowed."
+            return "Cannot add supplement. You have \(current) supplements. Maximum \(maximum) supplements allowed per group."
+            
+        case .dietLimitExceeded(let current, let maximum):
+            return "Cannot add diet item. You have \(current) diet items. Maximum \(maximum) items allowed per group."
+            
+        case .mealLimitExceeded(let mealType, let current, let maximum):
+            return "Cannot add to \(mealType). You have \(current) items. Maximum \(maximum) items allowed for \(mealType)."
+            
+        case .frequencyLimitExceeded(let itemType, let requestedFrequency, let maximum):
+            return "Cannot schedule \(itemType) \(requestedFrequency) times per day. Maximum \(maximum) times allowed."
             
         case .invalidSchedule(let reason):
             return "Schedule issue: \(reason)"
@@ -162,6 +180,19 @@ enum AppError: LocalizedError {
         case .alreadyInGroup:
             return "You're already a member of this group."
             
+        // Firebase Errors
+        case .notAuthenticated:
+            return "Please sign in to access shared health data."
+            
+        case .groupNotSet:
+            return "Please select or create a group first."
+            
+        case .firebasePermissionDenied:
+            return "You don't have permission to make this change."
+            
+        case .firebaseSyncFailed(let reason):
+            return "Could not sync data: \(reason)"
+            
         // Validation Errors
         case .nameTooShort(let minimum):
             return "Name must be at least \(minimum) characters."
@@ -194,8 +225,14 @@ enum AppError: LocalizedError {
     // MARK: - Recovery Suggestions
     var recoverySuggestion: String? {
         switch self {
-        case .medicationLimitExceeded, .supplementLimitExceeded:
-            return "Edit existing items or wait until tomorrow to add more."
+        case .medicationLimitExceeded, .supplementLimitExceeded, .dietLimitExceeded:
+            return "Remove inactive items or edit existing ones to stay within limits."
+            
+        case .mealLimitExceeded:
+            return "Consider distributing items across different meals or removing inactive items."
+            
+        case .frequencyLimitExceeded:
+            return "Reduce the frequency or combine doses if medically appropriate."
             
         case .biometricNotEnrolled:
             return "Go to Settings > Face ID & Passcode to set up."

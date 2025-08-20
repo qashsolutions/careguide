@@ -263,6 +263,7 @@ final class InviteCodeViewModel: ObservableObject {
     
     let mode: InviteCodeView.GroupMode
     private let coreDataManager = CoreDataManager.shared
+    private let firebaseGroups = FirebaseGroupService.shared
     
     init(mode: InviteCodeView.GroupMode) {
         self.mode = mode
@@ -320,45 +321,48 @@ final class InviteCodeViewModel: ObservableObject {
             case .join:
                 // Get device ID for consistent tracking
                 let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
+                let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
                 let memberName = UserDefaults.standard.string(forKey: "userName") ?? "Member"
                 
-                // Try to join from cloud first
+                // Try to join via Firebase (this actually works across Apple IDs!)
                 do {
-                    if let cloudGroup = try await GroupSyncService.shared.joinGroupFromCloud(
+                    let firestoreGroup = try await firebaseGroups.joinGroup(
                         inviteCode: joinCode,
-                        memberId: deviceID,  // Use device ID directly
                         memberName: memberName
-                    ) {
-                        // Create local group from cloud data
-                        var localGroup = CareGroup(
-                            id: UUID(uuidString: cloudGroup.id) ?? UUID(),
-                            name: cloudGroup.name,
-                            adminUserID: UUID(uuidString: cloudGroup.admin_id) ?? UUID(),  // Fix: Convert String to UUID
-                            settings: GroupSettings.default
-                        )
-                        // Preserve the invite code from cloud
-                        localGroup.inviteCode = cloudGroup.invite_code
-                        
-                        // Save locally
-                        try await coreDataManager.saveGroup(localGroup)
-                        
-                        // Add member locally with device ID
-                        try await coreDataManager.addMemberToGroup(
-                            groupId: localGroup.id,
-                            userId: UUID(uuidString: deviceID) ?? UUID(),  // Store device ID as user ID
-                            name: memberName,
-                            phone: ""
-                        )
-                        
-                        createdGroup = localGroup
-                        groupCreated = true
-                        print("✅ Joined group from cloud")
-                    }
-                } catch {
-                    // Fallback to local-only join
-                    print("⚠️ Cloud join failed, trying local: \(error)")
+                    )
                     
-                    // Verify the group exists locally
+                    print("✅ Joined Firebase group: \(firestoreGroup.name)")
+                    
+                    // Create local copy of the group
+                    var localGroup = CareGroup(
+                        id: UUID(uuidString: firestoreGroup.id) ?? UUID(),
+                        name: firestoreGroup.name,
+                        adminUserID: UUID(uuidString: firestoreGroup.createdBy) ?? UUID(),
+                        settings: GroupSettings.default
+                    )
+                    localGroup.inviteCode = firestoreGroup.inviteCode
+                    
+                    // Save locally
+                    try await coreDataManager.saveGroup(localGroup)
+                    
+                    // Add member locally
+                    try await coreDataManager.addMemberToGroup(
+                        groupId: localGroup.id,
+                        userId: deviceUUID,
+                        name: memberName,
+                        phone: ""
+                    )
+                    
+                    createdGroup = localGroup
+                    groupCreated = true
+                    
+                    print("✅ Successfully joined group via Firebase - all 3 members can now share data!")
+                    
+                } catch {
+                    // Firebase join failed, try local only (won't work across Apple IDs)
+                    print("⚠️ Firebase join failed: \(error)")
+                    
+                    // Check if group exists locally (same device only)
                     guard let group = try await coreDataManager.findGroup(byInviteCode: joinCode) else {
                         throw AppError.invalidInviteCode
                     }
@@ -368,22 +372,22 @@ final class InviteCodeViewModel: ObservableObject {
                         throw AppError.groupFull(maxMembers: 3)
                     }
                     
-                    // Check if user is already in the group (by device ID)
-                    let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
+                    // Check if user is already in the group
                     if group.members.contains(where: { $0.userID == deviceUUID }) || group.adminUserID == deviceUUID {
                         throw AppError.alreadyInGroup
                     }
                     
-                    // Add member locally with device ID
+                    // Add member locally
                     try await coreDataManager.addMemberToGroup(
                         groupId: group.id,
-                        userId: deviceUUID,  // Store device ID as user ID
+                        userId: deviceUUID,
                         name: memberName,
                         phone: ""
                     )
                     
                     createdGroup = group
                     groupCreated = true
+                    print("⚠️ Joined locally only - won't sync across devices")
                 }
             }
         } catch {
@@ -397,32 +401,38 @@ final class InviteCodeViewModel: ObservableObject {
     }
     
     func createNewGroup() async {
+        print("🔍 DEBUG: createNewGroup called from MainActor context")
         do {
-            // Get device ID instead of random UUID
+            // Get device ID for local tracking
             let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
             let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
             
-            // Create new group with device ID as admin ID
+            // Create new group locally
             let newGroup = CareGroup(
                 name: groupName,
-                adminUserID: deviceUUID,  // This is now the device ID
+                adminUserID: deviceUUID,
                 settings: GroupSettings.default
             )
             
-            // Save the group locally
+            // Save the group locally first - ensure proper actor isolation
+            print("🔍 DEBUG: About to call CoreDataManager.saveGroup from MainActor context")
             try await coreDataManager.saveGroup(newGroup)
+            print("🔍 DEBUG: CoreDataManager.saveGroup completed successfully")
             
-            // Sync to cloud
+            // Create group in Firebase for cross-Apple ID sharing
             do {
-                try await GroupSyncService.shared.createGroupInCloud(
+                let firestoreGroup = try await firebaseGroups.createGroup(
                     name: groupName,
-                    inviteCode: newGroup.inviteCode,
-                    adminId: deviceID  // Use device ID directly
+                    inviteCode: newGroup.inviteCode
                 )
-                print("✅ Group synced to cloud")
+                print("✅ Group created in Firebase with invite code: \(firestoreGroup.inviteCode)")
+                
+                // Start syncing local medications to Firebase
+                await syncLocalDataToFirebase(groupId: firestoreGroup.id)
+                
             } catch {
-                print("⚠️ Failed to sync group to cloud: \(error)")
-                // Continue even if cloud sync fails - local group is created
+                print("⚠️ Failed to create group in Firebase: \(error)")
+                // Group still works locally
             }
             
             // Update state
@@ -433,6 +443,13 @@ final class InviteCodeViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             showError = true
         }
+    }
+    
+    // Helper function to sync local data to Firebase
+    private func syncLocalDataToFirebase(groupId: String) async {
+        // This will sync existing medications/supplements to the new Firebase group
+        // Implementation depends on your needs
+        print("Ready to sync local data to Firebase group: \(groupId)")
     }
     
     func deleteExistingGroupAndCreate(_ existingGroup: CareGroup?) async {

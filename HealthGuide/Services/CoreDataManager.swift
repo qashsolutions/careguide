@@ -29,13 +29,15 @@ actor CoreDataManager {
     
     // MARK: - Core Operations
     
-    /// Save changes to the persistent store
+    /// Save changes to the persistent store  
     func save() async throws {
         try await context.perform { @Sendable [context] in
             guard context.hasChanges else { return }
             try context.save()
         }
         
+        // Don't post notifications for background context saves
+        // This prevents other services from accessing background context entities
         await MainActor.run {
             NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
         }

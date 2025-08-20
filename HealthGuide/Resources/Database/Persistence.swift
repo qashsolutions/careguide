@@ -51,10 +51,14 @@ struct PersistenceController {
         return controller
     }()
     
+    // TEMPORARILY DISABLED: Using regular container to avoid CloudKit/Firestore conflicts
+    // let container: NSPersistentCloudKitContainer
     let container: NSPersistentContainer
     
     init(inMemory: Bool = false) {
         // Use the same model name as CoreDataStack
+        // TEMPORARILY DISABLED: CloudKit sync disabled to avoid conflicts with Firestore
+        // container = NSPersistentCloudKitContainer(name: "HealthDataModel")
         container = NSPersistentContainer(name: "HealthDataModel")
         
         // Configure the store description
@@ -65,19 +69,24 @@ struct PersistenceController {
         if inMemory {
             description.url = URL(fileURLWithPath: "/dev/null")
         } else {
-            // TEMPORARILY DISABLED CLOUDKIT - Testing memory issues
-            // Configure for CloudKit
-            // description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-            //     containerIdentifier: "iCloud.com.qashsolutions.HealthGuide"
-            // )
+            // TEMPORARILY DISABLED: CloudKit sync to prevent Firestore conflicts
+            /*
+            description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+                containerIdentifier: "iCloud.com.qashsolutions.HealthGuide"
+            )
             
-            // Enable history tracking (useful even without CloudKit)
+            // Enable history tracking (required for CloudKit)
             description.setOption(true as NSNumber, 
                                 forKey: NSPersistentHistoryTrackingKey)
             
-            // DISABLED: Remote change notifications for CloudKit
-            // description.setOption(true as NSNumber, 
-            //                     forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            // STEP 3: Enable remote change notifications for CloudKit sync
+            description.setOption(true as NSNumber, 
+                                forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            */
+            
+            // Keep history tracking for potential future use
+            description.setOption(true as NSNumber, 
+                                forKey: NSPersistentHistoryTrackingKey)
         }
         
         container.loadPersistentStores { storeDescription, error in
@@ -94,7 +103,8 @@ struct PersistenceController {
             } else {
                 print("✅ Core Data loaded successfully")
                 print("✅ Store URL: \(storeDescription.url?.absoluteString ?? "unknown")")
-                print("✅ CloudKit enabled: \(storeDescription.cloudKitContainerOptions != nil)") // Should show false now
+                print("✅ CloudKit enabled: false (disabled to prevent Firestore conflicts)")
+                // print("✅ CloudKit container: iCloud.com.qashsolutions.HealthGuide")
             }
         }
         

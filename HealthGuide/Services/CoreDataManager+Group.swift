@@ -16,18 +16,61 @@ extension CoreDataManager {
     
     /// Save a care group to the persistent store
     func saveGroup(_ group: CareGroup) async throws {
-        // Validate the group
-        try group.validate()
+        print("🔍 DEBUG: saveGroup called from async context")
+        print("🔍 DEBUG: Group name: \(group.name), ID: \(group.id)")
+        print("🔍 DEBUG: CoreDataManager context: \(context)")
         
+        // Validate the group
+        do {
+            try group.validate()
+            print("🔍 DEBUG: Group validation passed")
+        } catch {
+            print("🔍 DEBUG: ❌ Group validation failed: \(error)")
+            throw error
+        }
+        
+        let groupName = group.name
+        let groupId = group.id
+        
+        print("🔍 DEBUG: About to call context.perform")
+        
+        // Perform Core Data operations with debug logging
         try await context.perform { [context] in
-            let entity = CareGroupEntity(context: context)
-            entity.id = group.id
+            print("🔍 DEBUG: Inside context.perform block")
+            print("🔍 DEBUG: Context: \(context)")
+            print("🔍 DEBUG: Context concurrency type: \(context.concurrencyType.rawValue)")
+            
+            // Check if group already exists
+            let request = CareGroupEntity.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %@", groupId as CVarArg)
+            
+            print("🔍 DEBUG: About to fetch existing groups")
+            let existingGroups = try context.fetch(request)
+            print("🔍 DEBUG: Found \(existingGroups.count) existing groups")
+            
+            let entity: CareGroupEntity
+            
+            if let existingGroup = existingGroups.first {
+                // Update existing group
+                entity = existingGroup
+                print("🔍 DEBUG: Updating existing group")
+            } else {
+                // Create new group - ensure we're on the right context
+                print("🔍 DEBUG: Creating new group entity")
+                entity = NSEntityDescription.insertNewObject(forEntityName: "CareGroupEntity", into: context) as! CareGroupEntity
+                entity.id = groupId
+                print("🔍 DEBUG: New group entity created with ID: \(groupId)")
+            }
+            
+            // Set all properties
+            print("🔍 DEBUG: Setting entity properties")
             entity.name = group.name
             entity.inviteCode = group.inviteCode
             entity.adminUserID = group.adminUserID
-            entity.createdAt = group.createdAt
+            entity.createdAt = entity.createdAt ?? group.createdAt // Don't overwrite creation date if updating
             entity.updatedAt = Date()
             entity.inviteCodeExpiry = group.inviteCodeExpiry
+            print("🔍 DEBUG: Basic properties set")
             
             // Convert settings to dictionary
             let settingsDict: [String: Bool] = [
@@ -38,17 +81,36 @@ extension CoreDataManager {
                 "notifyOnMedicationChanges": group.settings.notifyOnMedicationChanges,
                 "notifyOnMissedDoses": group.settings.notifyOnMissedDoses
             ]
+            print("🔍 DEBUG: Settings dictionary created: \(settingsDict)")
             entity.settings = settingsDict as NSDictionary
+            print("🔍 DEBUG: Settings assigned to entity")
             
-            try context.save()
+            // Save the context
+            print("🔍 DEBUG: Context has changes: \(context.hasChanges)")
+            if context.hasChanges {
+                print("🔍 DEBUG: About to save context")
+                print("🔍 DEBUG: Context persistent store coordinator: \(String(describing: context.persistentStoreCoordinator))")
+                do {
+                    try context.save()
+                    print("🔍 DEBUG: ✅ Context save succeeded")
+                } catch let error as NSError {
+                    print("🔍 DEBUG: ❌ Context save failed with error: \(error)")
+                    print("🔍 DEBUG: ❌ Error domain: \(error.domain)")
+                    print("🔍 DEBUG: ❌ Error code: \(error.code)")
+                    print("🔍 DEBUG: ❌ Error userInfo: \(error.userInfo)")
+                    print("🔍 DEBUG: ❌ Error localizedDescription: \(error.localizedDescription)")
+                    throw error
+                }
+            } else {
+                print("🔍 DEBUG: No changes to save")
+            }
         }
         
-        // Post notification on main queue to avoid threading issues
+        // All UI updates happen AFTER Core Data operations complete
         await MainActor.run {
-            // COMMENTED OUT: Old generic notification causing CPU issues
-            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
+            AppLogger.main.info("✅ Group saved to Core Data: \(groupName)")
             
-            // NEW: Post selective notification for group changes only
+            // Post notification for group changes
             NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
@@ -83,12 +145,8 @@ extension CoreDataManager {
             try context.save()
         }
         
-        // Post notification on main queue to avoid threading issues
+        // UI updates after Core Data operations
         await MainActor.run {
-            // COMMENTED OUT: Old generic notification causing CPU issues
-            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
-            
-            // NEW: Post selective notification for group changes only
             NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
@@ -159,28 +217,37 @@ extension CoreDataManager {
     
     /// Delete a care group
     func deleteGroup(_ id: UUID) async throws {
+        let groupName = "Group-\(id.uuidString.prefix(8))" // For logging
+        
         try await context.perform { [context] in
             let request = CareGroupEntity.fetchRequest()
             request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
             
-            if let entity = try context.fetch(request).first {
-                // Delete all associated members first
-                if let members = entity.members {
-                    for case let member as NSManagedObject in members {
-                        context.delete(member)
-                    }
+            let entities = try context.fetch(request)
+            
+            guard let entity = entities.first else {
+                return // No group found, nothing to delete
+            }
+            
+            // Delete all associated members first
+            if let members = entity.members as? Set<GroupMemberEntity> {
+                for member in members {
+                    context.delete(member)
                 }
-                
-                context.delete(entity)
+            }
+            
+            // Delete the group entity
+            context.delete(entity)
+            
+            // Save changes
+            if context.hasChanges {
                 try context.save()
             }
         }
         
+        // UI updates after Core Data operations
         await MainActor.run {
-            // COMMENTED OUT: Old generic notification causing CPU issues
-            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
-            
-            // NEW: Post selective notification for group changes only
+            AppLogger.main.info("✅ Group deleted successfully: \(groupName)")
             NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }
@@ -201,7 +268,7 @@ extension CoreDataManager {
             entity.inviteCode = newCode
             entity.inviteCodeExpiry = Calendar.current.date(
                 byAdding: .day,
-                value: 1,  // Configuration.FamilyGroups.inviteCodeExpiration is in hours, not days
+                value: 1,
                 to: Date()
             )
             entity.updatedAt = Date()
@@ -228,12 +295,17 @@ extension CoreDataManager {
     
     /// Add a member to a group
     func addMemberToGroup(groupId: UUID, userId: UUID, name: String, phone: String) async throws {
+        let memberName = name.isEmpty ? "Member" : name
+        
+        // Core Data operations without any logging inside
         try await context.perform { [context] in
             // Find the group
             let groupRequest = CareGroupEntity.fetchRequest()
             groupRequest.predicate = NSPredicate(format: "id == %@", groupId as CVarArg)
             
-            guard let groupEntity = try context.fetch(groupRequest).first else {
+            let groups = try context.fetch(groupRequest)
+            
+            guard let groupEntity = groups.first else {
                 throw AppError.coreDataFetchFailed
             }
             
@@ -249,25 +321,25 @@ extension CoreDataManager {
                 }
             }
             
-            // Create new member using Core Data's generated method
-            let memberEntity = GroupMemberEntity(context: context)
+            // Create new member using NSEntityDescription for thread safety
+            let memberEntity = NSEntityDescription.insertNewObject(forEntityName: "GroupMemberEntity", into: context) as! GroupMemberEntity
             memberEntity.userID = userId
-            memberEntity.name = name.isEmpty ? "Member" : name
+            memberEntity.name = memberName
             memberEntity.phoneNumber = phone
             
             // Add to group using Core Data's generated method
             groupEntity.addToMembers(memberEntity)
             groupEntity.updatedAt = Date()
             
-            try context.save()
+            // Save changes
+            if context.hasChanges {
+                try context.save()
+            }
         }
         
-        // Post notification on main queue to avoid threading issues
+        // UI updates after Core Data operations
         await MainActor.run {
-            // COMMENTED OUT: Old generic notification causing CPU issues
-            // NotificationCenter.default.post(name: .coreDataDidSave, object: nil)
-            
-            // NEW: Post selective notification for group changes only
+            AppLogger.main.info("✅ Member '\(memberName)' added to group successfully")
             NotificationCenter.default.post(name: .groupDataDidChange, object: nil)
         }
     }

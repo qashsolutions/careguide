@@ -3,6 +3,7 @@
 //  Main app entry point - manages app lifecycle and initialization
 import SwiftUI
 import AppIntents
+import FirebaseCore
 
 @main
 @available(iOS 18.0, *)
@@ -13,6 +14,11 @@ struct HealthGuideApp: App {
     @StateObject private var accessManager = AccessSessionManager.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var medicationScheduler = MedicationNotificationScheduler.shared
+    // TEMPORARILY DISABLED: CloudKit sync to prevent Firestore conflicts
+    // @StateObject private var cloudSyncService = CloudKitSyncService.shared
+    @StateObject private var firebaseAuth = FirebaseAuthService.shared
+    @StateObject private var firebaseGroups = FirebaseGroupService.shared
+    @StateObject private var firebaseSync = FirebaseDataSyncService.shared
     @State private var isInitialized = false
     @State private var isInBackground = false
     @Environment(\.scenePhase) var scenePhase
@@ -119,12 +125,34 @@ struct HealthGuideApp: App {
             AppLogger.main.info("Falling back to local trial management")
         }
         
-        // 4. Clean up old notifications and schedule daily cleanup
+        // 4. Initialize Firebase anonymous auth
+        AppLogger.performance.debug("Initializing Firebase Auth")
+        do {
+            let userId = try await firebaseAuth.signInAnonymously()
+            AppLogger.main.info("Firebase Auth initialized with user: \(userId)")
+        } catch {
+            AppLogger.main.error("Firebase Auth failed: \(error)")
+        }
+        
+        // 5. TEMPORARILY DISABLED: CloudKit sync service to prevent Firestore conflicts
+        /*
+        AppLogger.performance.debug("Initializing CloudKit sync")
+        let cloudKitAvailable = await cloudSyncService.checkSyncStatus()
+        if cloudKitAvailable {
+            cloudSyncService.enableAutoSync(interval: 60) // Sync every minute
+            AppLogger.main.info("CloudKit sync enabled for personal backup")
+        } else {
+            AppLogger.main.warning("CloudKit sync not available")
+        }
+        */
+        AppLogger.main.info("CloudKit sync disabled - using Firestore for group sharing only")
+        
+        // 5. Clean up old notifications and schedule daily cleanup
         AppLogger.performance.debug("Setting up notification cleanup")
         await NotificationManager.shared.cleanupPreviousDayNotifications()
         await NotificationManager.shared.scheduleEndOfDayCleanup()
         
-        // 5. Mark as initialized
+        // 6. Mark as initialized
         await MainActor.run {
             let totalTime = Date().timeIntervalSince(startTime)
             AppLogger.performance.info("App initialization completed in \(totalTime)s")
@@ -218,6 +246,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #if DEBUG
         AppLogger.main.debug("AppDelegate: didFinishLaunching")
         #endif
+        
+        // Configure Firebase
+        FirebaseApp.configure()
+        AppLogger.main.info("Firebase configured successfully")
         
         // Setup notification delegate immediately
         NotificationManager.shared.setupDelegate()

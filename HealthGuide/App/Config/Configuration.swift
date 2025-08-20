@@ -34,9 +34,30 @@ enum Configuration: Sendable {
     
     // MARK: - Health Limits
     enum HealthLimits {
-        static let maximumDailyFrequency = 3  // Max times per day for any single medication/supplement
-        static let scheduleDaysAhead = 5      // Schedule medications for next 5 days
-        static let minimumDoseInterval = 4    // Minimum hours between doses
+        // Per-group limits for medications
+        static let maxMedications = 6                    // Max medications per group
+        static let maxMedicationFrequency = 3            // Max times per day per medication
+        
+        // Per-group limits for supplements  
+        static let maxSupplements = 4                    // Max supplements per group
+        static let maxSupplementFrequency = 3            // Max times per day per supplement (same as medications)
+        
+        // Per-group limits for diet items
+        static let maxDietItems = 12                     // Total diet items per group
+        static let maxBreakfastItems = 3                 // Max items for breakfast
+        static let maxLunchItems = 4                     // Max items for lunch
+        static let maxDinnerItems = 4                    // Max items for dinner
+        static let maxSnackItems = 2                     // Max items for snacks
+        
+        // General limits
+        static let maxDailyDosesPerItem = 6              // Max doses per day for any single item
+        static let maxTotalDailyReminders = 35           // Max total reminders across all items
+        static let scheduleDaysAhead = 5                 // Schedule items for next 5 days
+        static let minimumDoseInterval = 4               // Minimum hours between doses
+        static let maxScheduleDuration = 90              // Max days for any schedule
+        
+        // Legacy (for backward compatibility)
+        static let maximumDailyFrequency = 3             // Max times per day (legacy)
     }
     
     // MARK: - Time Settings

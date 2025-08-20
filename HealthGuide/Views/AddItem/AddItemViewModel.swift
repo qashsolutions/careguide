@@ -114,6 +114,9 @@ final class AddItemViewModel: ObservableObject {
             try await coreDataManager.saveSupplement(supplement)
             // Notifications will be scheduled lazily when user views dashboard
             
+            // Sync to cloud if in a group
+            await syncToCloudIfNeeded(supplement: supplement)
+            
         case .diet:
             let diet = Diet(
                 name: name,
@@ -122,37 +125,114 @@ final class AddItemViewModel: ObservableObject {
                 schedule: schedule
             )
             try await coreDataManager.saveDiet(diet)
+            
+            // Sync to cloud if in a group
+            await syncToCloudIfNeeded(diet: diet)
         }
     }
     
     // MARK: - Cloud Sync
     private func syncToCloudIfNeeded(medication: Medication) async {
-        // Check if user is in a group
-        guard let activeGroupID = UserDefaults.standard.string(forKey: "activeGroupID") else {
-            // No active group, no sync needed
+        print("🔥 syncToCloudIfNeeded called for medication: \(medication.name)")
+        
+        // Check if user is in a Firebase group
+        guard let currentGroup = FirebaseGroupService.shared.currentGroup else {
+            print("ℹ️ No active Firebase group, skipping cloud sync")
+            print("   Current group is nil in FirebaseGroupService")
             return
         }
         
-        // Sync medication to cloud
+        print("🔥 Found current group: \(currentGroup.name) with ID: \(currentGroup.id)")
+        
+        // Sync medication to Firebase using the new service
         do {
-            let medicationData = MedicationData(
-                id: medication.id.uuidString,
-                name: medication.name,
-                dosage: medication.dosage,
-                frequency: medication.schedule.frequency.rawValue,
-                notes: medication.notes,
-                updatedBy: UserManager.shared.getOrCreateUserID().uuidString
-            )
-            
-            try await GroupSyncService.shared.syncMedication(
-                groupId: activeGroupID,
-                medication: medicationData,
-                action: .create
-            )
-            print("✅ Medication synced to cloud for group")
+            // Use the FirebaseHealthService to save medication
+            let healthService = FirebaseHealthService()
+            healthService.setCurrentGroup(currentGroup.id)
+            print("🔥 About to call healthService.saveMedication...")
+            try await healthService.saveMedication(medication)
+            print("✅ Medication synced to Firebase for group: \(currentGroup.name)")
+            print("   Check Firebase at: groups/\(currentGroup.id)/medications/")
         } catch {
-            print("⚠️ Failed to sync medication to cloud: \(error)")
-            // Continue even if sync fails - local data is saved
+            print("❌ Failed to sync medication to Firebase: \(error)")
+            print("   Error details: \(error.localizedDescription)")
+            
+            // Show error to user for limit violations
+            if let appError = error as? AppError {
+                await MainActor.run {
+                    self.errorMessage = appError.localizedDescription ?? "Failed to sync to group"
+                    self.showErrorAlert = true
+                }
+            }
+            // Note: Local data is already saved, so the item exists locally
+        }
+    }
+    
+    private func syncToCloudIfNeeded(supplement: Supplement) async {
+        print("🔥 syncToCloudIfNeeded called for supplement: \(supplement.name)")
+        
+        // Check if user is in a Firebase group
+        guard let currentGroup = FirebaseGroupService.shared.currentGroup else {
+            print("ℹ️ No active Firebase group, skipping cloud sync")
+            return
+        }
+        
+        print("🔥 Found current group: \(currentGroup.name) with ID: \(currentGroup.id)")
+        
+        // Sync supplement to Firebase using the new service
+        do {
+            let healthService = FirebaseHealthService()
+            healthService.setCurrentGroup(currentGroup.id)
+            print("🔥 About to call healthService.saveSupplement...")
+            try await healthService.saveSupplement(supplement)
+            print("✅ Supplement synced to Firebase for group: \(currentGroup.name)")
+            print("   Check Firebase at: groups/\(currentGroup.id)/supplements/")
+        } catch {
+            print("❌ Failed to sync supplement to Firebase: \(error)")
+            print("   Error details: \(error.localizedDescription)")
+            
+            // Show error to user for limit violations
+            if let appError = error as? AppError {
+                await MainActor.run {
+                    self.errorMessage = appError.localizedDescription ?? "Failed to sync to group"
+                    self.showErrorAlert = true
+                }
+            }
+            // Note: Local data is already saved, so the item exists locally
+        }
+    }
+    
+    private func syncToCloudIfNeeded(diet: Diet) async {
+        print("🔥 syncToCloudIfNeeded called for diet: \(diet.name)")
+        
+        // Check if user is in a Firebase group
+        guard let currentGroup = FirebaseGroupService.shared.currentGroup else {
+            print("ℹ️ No active Firebase group, skipping cloud sync")
+            return
+        }
+        
+        print("🔥 Found current group: \(currentGroup.name) with ID: \(currentGroup.id)")
+        
+        // Sync diet to Firebase using the new service
+        do {
+            let healthService = FirebaseHealthService()
+            healthService.setCurrentGroup(currentGroup.id)
+            print("🔥 About to call healthService.saveDiet...")
+            try await healthService.saveDiet(diet)
+            print("✅ Diet synced to Firebase for group: \(currentGroup.name)")
+            print("   Check Firebase at: groups/\(currentGroup.id)/diets/")
+        } catch {
+            print("❌ Failed to sync diet to Firebase: \(error)")
+            print("   Error details: \(error.localizedDescription)")
+            
+            // Show error to user for limit violations
+            if let appError = error as? AppError {
+                await MainActor.run {
+                    self.errorMessage = appError.localizedDescription ?? "Failed to sync to group"
+                    self.showErrorAlert = true
+                }
+            }
+            // Note: Local data is already saved, so the item exists locally
         }
     }
 }
