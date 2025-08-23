@@ -14,6 +14,8 @@ struct GroupMemberListView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: GroupMemberListViewModel
+    @StateObject private var firebaseGroups = FirebaseGroupService.shared
+    @State private var showMemberManagement = false
     
     let group: CareGroupEntity
     
@@ -34,6 +36,10 @@ struct GroupMemberListView: View {
                         
                         membersSection
                         
+                        if viewModel.isAdmin || firebaseGroups.userIsAdmin {
+                            manageSection
+                        }
+                        
                         if viewModel.isAdmin {
                             inviteSection
                         }
@@ -52,6 +58,9 @@ struct GroupMemberListView: View {
             }
             .task {
                 await viewModel.loadMembers()
+            }
+            .sheet(isPresented: $showMemberManagement) {
+                EnhancedMemberManagementView()
             }
         }
     }
@@ -100,6 +109,43 @@ struct GroupMemberListView: View {
         }
     }
     
+    private var manageSection: some View {
+        VStack(spacing: AppTheme.Spacing.medium) {
+            Button(action: {
+                showMemberManagement = true
+            }) {
+                HStack {
+                    Image(systemName: "person.3.sequence.fill")
+                        .font(.system(size: 20))
+                    
+                    Text("Manage Members")
+                        .font(.monaco(AppTheme.Typography.body))
+                        .fontWeight(.medium)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                }
+                .foregroundColor(AppTheme.Colors.primaryBlue)
+                .padding(AppTheme.Spacing.medium)
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Dimensions.buttonCornerRadius)
+                        .fill(AppTheme.Colors.primaryBlue.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.Dimensions.buttonCornerRadius)
+                                .stroke(AppTheme.Colors.primaryBlue, lineWidth: 1.5)
+                        )
+                )
+            }
+            
+            Text("Edit names, toggle access, or remove members")
+                .font(.monaco(AppTheme.Typography.footnote))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+    
     private var inviteSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
             Text("Invite Code")
@@ -108,14 +154,16 @@ struct GroupMemberListView: View {
             
             VStack(spacing: AppTheme.Spacing.small) {
                 HStack(spacing: AppTheme.Spacing.small) {
-                    ForEach(Array(group.inviteCode ?? "").indices, id: \.self) { index in
-                        let digit = Array(group.inviteCode ?? "")[index]
+                    let codeArray = Array(group.inviteCode ?? "")
+                    ForEach(codeArray.indices, id: \.self) { index in
+                        let digit = codeArray[index]
                         Text(String(digit))
                             .font(.monaco(AppTheme.Typography.title))
                             .fontWeight(AppTheme.Typography.bold)
                             .frame(width: 45, height: 55)
                             .background(AppTheme.Colors.backgroundSecondary)
                             .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
+                            .id("\(index)-\(digit)")  // Unique ID for each position
                     }
                 }
                 

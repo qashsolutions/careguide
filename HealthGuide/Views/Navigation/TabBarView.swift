@@ -89,7 +89,7 @@ struct TabBarView: View {
     
     // MARK: - Payment Prompt Check
     private func checkForPaymentPrompt() {
-        // Check if we should show payment prompt (day 5+ of trial)
+        // Check if we should show payment prompt (days 12-14 of trial only)
         if subscriptionManager.shouldShowPaymentPrompt {
             // Delay slightly to avoid sheet presentation conflicts
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

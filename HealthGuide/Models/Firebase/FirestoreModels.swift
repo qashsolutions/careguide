@@ -21,9 +21,11 @@ struct FirestoreGroup: Codable, Identifiable {
     var writePermissionIds: [String]
     let createdAt: Date
     var updatedAt: Date
+    var trialStartDate: Date?  // Admin's trial start date (shared with all members)
+    var trialEndDate: Date?    // Admin's trial end date (shared with all members)
     
     var dictionary: [String: Any] {
-        return [
+        var dict: [String: Any] = [
             "id": id,
             "name": name,
             "inviteCode": inviteCode,
@@ -34,6 +36,16 @@ struct FirestoreGroup: Codable, Identifiable {
             "createdAt": Timestamp(date: createdAt),
             "updatedAt": Timestamp(date: updatedAt)
         ]
+        
+        if let trialStart = trialStartDate {
+            dict["trialStartDate"] = Timestamp(date: trialStart)
+        }
+        
+        if let trialEnd = trialEndDate {
+            dict["trialEndDate"] = Timestamp(date: trialEnd)
+        }
+        
+        return dict
     }
 }
 
@@ -43,9 +55,11 @@ struct FirestoreMember: Codable, Identifiable {
     let id: String
     let userId: String
     let groupId: String
-    let name: String
+    var name: String  // Made mutable for name editing
+    var displayName: String?  // Custom name set by primary user
     var role: String // "admin" or "member"
     var permissions: String // "write" or "read"
+    var isAccessEnabled: Bool  // Toggle for access control
     let joinedAt: Date
     var lastActiveAt: Date?
     
@@ -57,14 +71,41 @@ struct FirestoreMember: Codable, Identifiable {
             "name": name,
             "role": role,
             "permissions": permissions,
+            "isAccessEnabled": isAccessEnabled,
             "joinedAt": Timestamp(date: joinedAt)
         ]
+        
+        if let displayName = displayName {
+            dict["displayName"] = displayName
+        }
         
         if let lastActive = lastActiveAt {
             dict["lastActiveAt"] = Timestamp(date: lastActive)
         }
         
         return dict
+    }
+    
+    init(id: String = UUID().uuidString,
+         userId: String,
+         groupId: String,
+         name: String,
+         displayName: String? = nil,
+         role: String = "member",
+         permissions: String = "read",
+         isAccessEnabled: Bool = true,
+         joinedAt: Date = Date(),
+         lastActiveAt: Date? = nil) {
+        self.id = id
+        self.userId = userId
+        self.groupId = groupId
+        self.name = name
+        self.displayName = displayName
+        self.role = role
+        self.permissions = permissions
+        self.isAccessEnabled = isAccessEnabled
+        self.joinedAt = joinedAt
+        self.lastActiveAt = lastActiveAt
     }
 }
 

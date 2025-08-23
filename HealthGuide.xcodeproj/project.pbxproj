@@ -12,6 +12,7 @@
 		E47D905E2E412FF3005A0292 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E47D905D2E412FF3005A0292 /* StoreKit.framework */; };
 		E4A7ED1E2E55189E006249A1 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = E4A7ED1D2E55189E006249A1 /* FirebaseFirestore */; };
 		E4A7ED202E5518A9006249A1 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = E4A7ED1F2E5518A9006249A1 /* FirebaseAuth */; };
+		E4A7ED3A2E581831006249A1 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = E4A7ED392E581831006249A1 /* FirebaseStorage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -79,6 +80,7 @@
 				E4A7ED1E2E55189E006249A1 /* FirebaseFirestore in Frameworks */,
 				E47D90592E412287005A0292 /* Stripe in Frameworks */,
 				E47D905B2E412287005A0292 /* StripeApplePay in Frameworks */,
+				E4A7ED3A2E581831006249A1 /* FirebaseStorage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -152,6 +154,7 @@
 				E47D905A2E412287005A0292 /* StripeApplePay */,
 				E4A7ED1D2E55189E006249A1 /* FirebaseFirestore */,
 				E4A7ED1F2E5518A9006249A1 /* FirebaseAuth */,
+				E4A7ED392E581831006249A1 /* FirebaseStorage */,
 			);
 			productName = HealthGuide;
 			productReference = E4CBA0C22E334C7500B05A42 /* HealthGuide.app */;
@@ -688,6 +691,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E4A7ED122E55121C006249A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAuth;
+		};
+		E4A7ED392E581831006249A1 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E4A7ED122E55121C006249A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

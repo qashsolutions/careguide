@@ -261,15 +261,16 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
         
         content.body = bodyLines.joined(separator: "\n")
         
-        // Use a distinct sound
-        content.sound = .defaultCritical  // Louder, more distinctive
+        // Use a distinct sound with high volume
+        content.sound = .defaultCriticalSound(withAudioVolume: 1.0)  // Maximum volume
         
-        // Make it time-sensitive so it stays visible
+        // Make it time-sensitive so it stays visible and breaks through Focus modes
         content.interruptionLevel = .timeSensitive
         content.relevanceScore = 1.0
         
-        // Badge managed by BadgeManager for time-based counts
-        // content.badge removed - centralized badge management
+        // Set badge to show the number of items to take
+        // This badge will persist until the user marks medications as taken
+        content.badge = NSNumber(value: itemCount)
         
         // Set category for action buttons
         content.categoryIdentifier = "MEDICATION"

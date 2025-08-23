@@ -175,6 +175,8 @@ struct DocumentPicker: UIViewControllerRepresentable {
 struct SaveDocumentView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var viewContext
+    @StateObject private var firebaseDocuments = FirebaseDocumentsService.shared
+    @StateObject private var groupService = FirebaseGroupService.shared
     
     let fileURL: URL
     let fileSize: Int64
@@ -224,8 +226,13 @@ struct SaveDocumentView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
                         if let category = selectedCategory {
-                            onSave(filename, category, notes.isEmpty ? nil : notes)
-                            dismiss()
+                            Task {
+                                await saveDocumentWithFirebase(
+                                    filename: filename,
+                                    category: category,
+                                    notes: notes.isEmpty ? nil : notes
+                                )
+                            }
                         }
                     }
                     .disabled(!canSave)
@@ -312,6 +319,40 @@ struct SaveDocumentView: View {
     
     private var canSave: Bool {
         !filename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCategory != nil
+    }
+    
+    @MainActor
+    private func saveDocumentWithFirebase(
+        filename: String,
+        category: DocumentCategoryEntity,
+        notes: String?
+    ) async {
+        // First call the original onSave callback to save to Core Data
+        onSave(filename, category, notes)
+        
+        // Then sync to Firebase if in a group
+        if groupService.currentGroup != nil {
+            do {
+                // Read the file data for Firebase upload
+                let fileData = try Data(contentsOf: fileURL)
+                let fileExtension = fileURL.pathExtension.lowercased()
+                
+                // Upload to Firebase
+                try await firebaseDocuments.saveDocument(
+                    filename: filename,
+                    fileType: fileExtension,
+                    category: category.name ?? "",
+                    fileData: fileData,
+                    notes: notes
+                )
+                
+                AppLogger.main.info("✅ Document synced to Firebase for group sharing")
+            } catch {
+                AppLogger.main.error("❌ Failed to sync document to Firebase: \(error)")
+            }
+        }
+        
+        dismiss()
     }
 }
 

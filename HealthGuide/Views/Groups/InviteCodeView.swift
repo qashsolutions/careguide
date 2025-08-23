@@ -18,6 +18,8 @@ struct InviteCodeView: View {
     @AppStorage("activeGroupID") private var activeGroupID: String = ""
     @State private var showDeleteConfirmation = false
     @State private var existingGroupToDelete: CareGroup?
+    @State private var showJoinSuccessAlert = false
+    @State private var joinedGroupName = ""
     
     let mode: GroupMode
     let onSuccess: (() -> Void)?
@@ -71,21 +73,42 @@ struct InviteCodeView: View {
             .disabled(viewModel.isProcessing)
             .onChange(of: viewModel.groupCreated) { _, created in
                 if created {
-                    // Set the new group as active
+                    if mode == .join {
+                        // Show the read-only alert for members joining
+                        joinedGroupName = viewModel.createdGroup?.name ?? "the group"
+                        showJoinSuccessAlert = true
+                    } else {
+                        // Set the new group as active for creators
+                        if let groupID = viewModel.createdGroup?.id.uuidString {
+                            activeGroupID = groupID
+                        }
+                        
+                        // Call success callback before dismissing
+                        onSuccess?()
+                        
+                        // Dismiss after a short delay to show success
+                        Task {
+                            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            .alert("Welcome to \(joinedGroupName)", isPresented: $showJoinSuccessAlert) {
+                Button("Understood") {
+                    // Set the group as active
                     if let groupID = viewModel.createdGroup?.id.uuidString {
                         activeGroupID = groupID
                     }
                     
-                    // Call success callback before dismissing
+                    // Call success callback and dismiss
                     onSuccess?()
-                    
-                    // Dismiss after a short delay to show success
-                    Task {
-                        try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
-                        dismiss()
-                    }
+                    dismiss()
                 }
+            } message: {
+                Text("You are joining as a member and will only be able to view the information but not edit.")
             }
+            .tint(AppTheme.Colors.primaryBlue)  // Ensure button is visible
             .confirmationDialog(
                 "Replace Existing Group?",
                 isPresented: $showDeleteConfirmation,
@@ -96,12 +119,14 @@ struct InviteCodeView: View {
                         await viewModel.deleteExistingGroupAndCreate(existingGroupToDelete)
                     }
                 }
+                
                 Button("Cancel", role: .cancel) {
                     existingGroupToDelete = nil
                 }
             } message: {
                 Text("You have one valid group. If you create another one, the current group with all members will be deleted.")
             }
+            .tint(AppTheme.Colors.primaryBlue)  // Apply tint to the entire dialog
             .onChange(of: viewModel.showExistingGroupWarning) { _, showWarning in
                 if showWarning, let group = viewModel.existingAdminGroup {
                     existingGroupToDelete = group
@@ -133,7 +158,15 @@ struct InviteCodeView: View {
             
             TextField("Group name", text: $viewModel.groupName)
                 .font(.monaco(AppTheme.Typography.body))
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(AppTheme.Spacing.medium)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Dimensions.inputCornerRadius)
+                        .stroke(AppTheme.Colors.textSecondary.opacity(0.3), lineWidth: 1)
+                )
+                .foregroundColor(AppTheme.Colors.textPrimary)  // This sets the text color
+                .accentColor(AppTheme.Colors.primaryBlue)  // This sets the cursor color in iOS
+                .tint(AppTheme.Colors.primaryBlue)  // Additional cursor color setting for iOS 15+
                 .autocorrectionDisabled()
             
             if viewModel.generatedCode.isEmpty {

@@ -77,9 +77,23 @@ final class CloudTrialManager: ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Initialize and check trial status
+    /// Initialize and check trial status - Optimized with cache-first approach
     func initialize() async throws {
-        print("☁️ Initializing CloudKit trial management...")
+        // FAST PATH: Check local cache first
+        if let cachedTrial = await loadFromLocalKeychain() {
+            // Use cached trial immediately for fast startup
+            self.trialState = cachedTrial
+            AppLogger.main.info("☁️ Trial loaded from cache: Day \(cachedTrial.daysUsed) of 14")
+            
+            // Verify with CloudKit in background (don't block startup)
+            Task.detached { [weak self] in
+                await self?.verifyTrialInBackground(cachedTrial)
+            }
+            return // Fast return - UI can proceed
+        }
+        
+        // SLOW PATH: No cache, must check CloudKit (after reinstall)
+        AppLogger.main.info("☁️ No cached trial, checking CloudKit...")
         
         // Check CloudKit availability
         let status = try await container.accountStatus()
@@ -93,29 +107,46 @@ final class CloudTrialManager: ObservableObject {
         // Get device identifier
         let deviceId = await deviceCheckManager.getDeviceIdentifier()
         
-        // Check for existing trial (both local and cloud)
+        // Check for existing trial in cloud
         if let existingTrial = try await fetchTrialFromCloud(accountId: accountId) {
-            print("☁️ Found existing trial in CloudKit")
+            AppLogger.main.info("☁️ Found existing trial in CloudKit")
             
             // Verify this device is authorized
             if try await verifyDeviceAuthorization(trial: existingTrial, deviceId: deviceId) {
                 self.trialState = existingTrial
                 await saveToLocalKeychain(existingTrial)
-                print("✅ Trial restored: Day \(existingTrial.daysUsed) of 14")
+                AppLogger.main.info("✅ Trial restored from CloudKit: Day \(existingTrial.daysUsed) of 14")
             } else {
-                print("❌ Device not authorized for this trial")
+                AppLogger.main.error("Device not authorized for this trial")
                 throw TrialError.deviceNotAuthorized
             }
-        } else if let localTrial = await loadFromLocalKeychain() {
-            print("☁️ Found local trial, syncing to CloudKit...")
-            
-            // Verify and sync local trial to cloud
-            if localTrial.accountId == accountId {
-                try await syncToCloud(localTrial)
-                self.trialState = localTrial
-            }
         } else {
-            print("☁️ No existing trial found")
+            AppLogger.main.info("☁️ No existing trial found - new user")
+        }
+    }
+    
+    /// Verify cached trial with CloudKit in background
+    private func verifyTrialInBackground(_ cachedTrial: UnifiedTrialState) async {
+        do {
+            // Get account identifier
+            let accountId = try await getAccountIdentifier()
+            
+            // Fetch latest from CloudKit
+            if let cloudTrial = try await fetchTrialFromCloud(accountId: accountId) {
+                // Compare with cache
+                if cloudTrial.startDate != cachedTrial.startDate ||
+                   cloudTrial.expiryDate != cachedTrial.expiryDate {
+                    // Cloud has different data - update cache and state
+                    await MainActor.run {
+                        self.trialState = cloudTrial
+                    }
+                    await saveToLocalKeychain(cloudTrial)
+                    AppLogger.main.info("☁️ Trial updated from CloudKit sync")
+                }
+            }
+        } catch {
+            // Background sync failed - not critical, cache is still valid
+            AppLogger.main.debug("Background trial sync failed: \(error)")
         }
     }
     

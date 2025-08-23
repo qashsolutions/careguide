@@ -2,7 +2,7 @@
 //  TrialPaymentPromptView.swift
 //  HealthGuide
 //
-//  Payment prompt shown on day 5 of free trial
+//  Payment prompt shown on days 12-14 of free trial
 //  Encourages users to add payment before trial ends
 //
 

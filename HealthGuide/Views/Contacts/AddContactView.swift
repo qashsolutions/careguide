@@ -14,6 +14,8 @@ import CoreData
 struct AddContactView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var viewContext
+    @StateObject private var firebaseContacts = FirebaseContactsService.shared
+    @StateObject private var groupService = FirebaseGroupService.shared
     
     @State private var name = ""
     @State private var phone = ""
@@ -425,6 +427,26 @@ struct AddContactView: View {
             newContact.notes = notesContent.isEmpty ? nil : notesContent
             
             try viewContext.save()
+            
+            // Sync to Firebase if in a group
+            if groupService.currentGroup != nil {
+                Task {
+                    do {
+                        try await firebaseContacts.saveContact(
+                            name: newContact.name ?? "",
+                            category: newContact.category,
+                            phone: newContact.phone,
+                            isPrimary: newContact.isPrimary,
+                            notes: newContact.notes
+                        )
+                        AppLogger.main.info("✅ Contact synced to Firebase for group sharing")
+                    } catch {
+                        AppLogger.main.error("⚠️ Failed to sync contact to Firebase: \(error)")
+                        // Don't show error - CoreData save succeeded
+                    }
+                }
+            }
+            
             dismiss()
         } catch {
             errorMessage = "Failed to save contact. Please try again."

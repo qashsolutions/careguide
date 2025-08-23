@@ -14,12 +14,23 @@ import CoreServices
 struct MyHealthDashboardView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var viewModel = MyHealthDashboardViewModel()
+    @StateObject private var groupService = FirebaseGroupService.shared
+    @StateObject private var serviceManager = FirebaseServiceManager.shared
+    private let dataProcessor = HealthDataProcessor.shared
     @State private var selectedPeriods: [TimePeriod] = [.breakfast]
     @State private var showAddItem = false
     @State private var showTakeConfirmation = false
     @State private var pendingDoseToMark: (item: any HealthItem, dose: ScheduledDose?)? = nil
     @State private var tappedItemId: UUID? = nil
     @State private var hasLoadedData = false
+    @State private var showNoPermissionAlert = false
+    @State private var lastGroupId: String? = nil
+    @State private var isLoadingData = false
+    @State private var refreshTimer: Timer? = nil
+    
+    // Use AppStorage to persist last refresh time across app launches
+    @AppStorage("lastHealthDataRefresh") private var lastRefreshTimestamp: Double = 0
+    private let refreshInterval: TimeInterval = 3600 // 1 hour
     
     // Lazy notification setup
     @AppStorage("hasHealthItems") private var hasHealthItems = false
@@ -28,58 +39,32 @@ struct MyHealthDashboardView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Warm off-white gradient background for reduced eye strain
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color(hex: "F8F8F8"),
-                        Color(hex: "FAFAFA")
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                
-                contentView
-            }
-            .navigationTitle("My Health")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    // Add button
-                    addButton
-                }
-            }
-            .sheet(isPresented: $showAddItem) {
-                AddItemView()
-                    .onDisappear {
-                        // Refresh data when sheet closes
-                        // TODO: Optimize to only refresh when item actually added
-                        Task {
-                            await viewModel.loadData()
-                        }
+            mainContent
+                .navigationTitle("My Health")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        addButton
                     }
-            }
-            .refreshable {
-                // Debounce refresh to prevent rapid reloads
-                try? await Task.sleep(for: .seconds(0.5))
-                await viewModel.loadData()
-            }
-            .task {
-                // Only load data once when view first appears
-                guard !hasLoadedData else { 
-                    // Silently skip - no need to log
-                    return 
                 }
-                
-                print("🔍 DEBUG: MyHealthDashboardView loading data for first time...")
-                await viewModel.loadData()
-                selectedPeriods = [viewModel.currentPeriod]
-                hasLoadedData = true
-                print("🔍 DEBUG: Loaded \(viewModel.allItems.count) items")
-                
+                .sheet(isPresented: $showAddItem) {
+                    addItemSheet
+                }
+                .refreshable {
+                    await handleRefresh()
+                }
+                .task {
+                    await handleInitialLoad()
+                }
+                .onDisappear {
+                    handleViewDisappear()
+                }
+                .onChange(of: groupService.currentGroup?.id) { oldValue, newValue in
+                    handleGroupChange(oldValue: oldValue, newValue: newValue)
+                }
+                .onChange(of: viewModel.allItems.count) { oldValue, newValue in
                 // Check if we have items and need to setup notifications
-                if viewModel.allItems.count > 0 {
+                if newValue > 0 {
                     hasHealthItems = true
                     
                     // Check if we need to setup notifications (once per day max)
@@ -141,6 +126,11 @@ struct MyHealthDashboardView: View {
                     Text("Have you taken this medication?")
                 }
             }
+            .alert("View Only Access", isPresented: $showNoPermissionAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Contact your group admin to make changes")
+            }
             .tint(Color.blue)  // Force blue tint for all interactive elements
         }
     }
@@ -149,12 +139,17 @@ struct MyHealthDashboardView: View {
     
     @ViewBuilder
     private var contentView: some View {
-        if viewModel.isLoading {
-            LoadingView(showSkeleton: true)
-        } else if viewModel.hasNoItems {
-            emptyStateView
-        } else {
-            dashboardContent
+        VStack(spacing: 0) {
+            // Show read-only banner at the top if applicable
+            ReadOnlyBanner()
+            
+            if viewModel.isLoading {
+                LoadingView(showSkeleton: true)
+            } else if viewModel.hasNoItems {
+                emptyStateView
+            } else {
+                dashboardContent
+            }
         }
     }
     
@@ -190,6 +185,76 @@ struct MyHealthDashboardView: View {
                 currentPeriod: viewModel.currentPeriod,
                 itemCounts: viewModel.getAllPeriodCounts()
             )
+        }
+    }
+    
+    // MARK: - Extracted View Components
+    
+    private var mainContent: some View {
+        ZStack {
+            // Warm off-white gradient background for reduced eye strain
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(hex: "F8F8F8"),
+                    Color(hex: "FAFAFA")
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            
+            contentView
+        }
+    }
+    
+    private var addItemSheet: some View {
+        AddItemView()
+            .onDisappear {
+                // Only primary users can add items
+                // They see changes immediately when they add
+                if groupService.userHasWritePermission {
+                    Task {
+                        // Invalidate cache and force refresh for primary user
+                        await dataProcessor.invalidateCache()
+                        await viewModel.loadData(forceRefresh: true)
+                    }
+                }
+            }
+    }
+    
+    // MARK: - Action Handlers
+    
+    private func handleRefresh() async {
+        // Manual pull-to-refresh - always works regardless of timer
+        print("🔄 Manual refresh requested by user")
+        await forceRefreshData()
+    }
+    
+    private func handleInitialLoad() async {
+        // Initial load on view appear
+        await loadDataWithRefreshCheck()
+        
+        // Setup periodic refresh timer (every 3600 seconds)
+        setupRefreshTimer()
+    }
+    
+    private func handleViewDisappear() {
+        // Clean up timer when view disappears
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+    
+    private func handleGroupChange(oldValue: String?, newValue: String?) {
+        // Only reload if group actually changed (prevents infinite loops)
+        if oldValue != newValue && newValue != nil {
+            Task {
+                print("📱 Group changed from \(oldValue ?? "none") to \(newValue ?? "none")")
+                // Force refresh when joining a new group
+                hasLoadedData = false
+                lastRefreshTimestamp = 0 // Reset timer for new group
+                await forceRefreshData()
+                hasLoadedData = true
+            }
         }
     }
     
@@ -300,7 +365,7 @@ struct MyHealthDashboardView: View {
             
             Spacer()
             
-            // Mark taken button
+            // Mark taken button (disabled for read-only users)
             Button(action: {
                 // Set visual feedback
                 tappedItemId = itemData.item.id
@@ -331,6 +396,8 @@ struct MyHealthDashboardView: View {
             .buttonStyle(.plain)
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
+            .disabled(!groupService.userHasWritePermission)
+            .opacity(groupService.userHasWritePermission ? 1.0 : 0.5)
         }
         .padding(.horizontal, AppTheme.Spacing.small)
         .padding(.vertical, AppTheme.Spacing.xSmall)
@@ -370,34 +437,117 @@ struct MyHealthDashboardView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
-            Button(action: { showAddItem = true }) {
-                Text("Add First Item")
-                    .font(.monaco(AppTheme.ElderTypography.callout))
-                    .fontWeight(AppTheme.Typography.semibold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: AppTheme.Dimensions.elderButtonHeight)
-                    .background(AppTheme.Colors.primaryBlue)
-                    .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
+            if groupService.userHasWritePermission {
+                Button(action: { showAddItem = true }) {
+                    Text("Add First Item")
+                        .font(.monaco(AppTheme.ElderTypography.callout))
+                        .fontWeight(AppTheme.Typography.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppTheme.Dimensions.elderButtonHeight)
+                        .background(AppTheme.Colors.primaryBlue)
+                        .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
+                }
+                .padding(.horizontal, AppTheme.Spacing.xxLarge)
+            } else {
+                Text("Ask your group admin to add items")
+                    .font(.monaco(AppTheme.ElderTypography.caption))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .padding(.horizontal, AppTheme.Spacing.xxLarge)
             }
-            .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
             Spacer()
         }
     }
     
+    private func loadDataWithRefreshCheck() async {
+        // Check if we need to refresh based on 3600-second interval
+        let lastRefresh = Date(timeIntervalSince1970: lastRefreshTimestamp)
+        let timeSinceRefresh = Date().timeIntervalSince(lastRefresh)
+        
+        if timeSinceRefresh >= refreshInterval {
+            // It's been more than 1 hour, do refresh
+            print("⏰ Auto-refresh triggered (last refresh: \(Int(timeSinceRefresh)) seconds ago)")
+            await performDataRefresh()
+        } else if !hasLoadedData {
+            // First load for this session
+            print("📱 Initial data load for session")
+            await performDataRefresh()
+        } else {
+            // Skip refresh - not needed yet
+            let timeUntilRefresh = refreshInterval - timeSinceRefresh
+            print("⏭️ Skipping refresh - last refresh was \(Int(timeSinceRefresh)) seconds ago")
+            print("   Next auto-refresh in \(Int(timeUntilRefresh)) seconds")
+        }
+    }
+    
+    private func forceRefreshData() async {
+        // Manual refresh - bypasses timer
+        print("👤 Manual refresh requested")
+        await performDataRefresh()
+    }
+    
+    private func performDataRefresh() async {
+        // Prevent concurrent loads
+        guard !isLoadingData else {
+            print("⏭️ Already loading data, skipping duplicate request")
+            return
+        }
+        
+        isLoadingData = true
+        defer { 
+            isLoadingData = false
+            lastRefreshTimestamp = Date().timeIntervalSince1970
+        }
+        
+        print("🔍 DEBUG: MyHealthDashboardView loading data...")
+        print("   Current group: \(FirebaseGroupService.shared.currentGroup?.name ?? "NO GROUP")")
+        print("   User has write permission: \(groupService.userHasWritePermission)")
+        
+        // Force refresh to bypass cache
+        await viewModel.loadData(forceRefresh: true)
+        selectedPeriods = [viewModel.currentPeriod]
+        hasLoadedData = true
+        
+        print("🔍 DEBUG: Loaded \(viewModel.allItems.count) items")
+        
+        // Update badge and notifications as before
+        await BadgeManager.shared.updateBadgeForCurrentPeriod()
+    }
+    
+    private func setupRefreshTimer() {
+        // Cancel existing timer if any
+        refreshTimer?.invalidate()
+        
+        // Setup timer to fire once every hour (3600 seconds)
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { _ in
+            Task { @MainActor in
+                print("⏰ Hourly refresh timer fired")
+                await performDataRefresh()
+            }
+        }
+        
+        print("⏰ Scheduled periodic refresh every \(Int(refreshInterval)) seconds")
+    }
+    
     private var addButton: some View {
-        Button(action: { showAddItem = true }) {
+        Button(action: { 
+            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
+                showNoPermissionAlert = true
+            } else {
+                showAddItem = true
+            }
+        }) {
             Image(systemName: "plus")
                 .font(.system(size: AppTheme.Typography.headline))
-                .foregroundColor(AppTheme.Colors.primaryBlue)
+                .foregroundColor(groupService.userHasWritePermission ? AppTheme.Colors.primaryBlue : Color.gray)
         }
         .frame(
             minWidth: AppTheme.Dimensions.minimumTouchTarget,
             minHeight: AppTheme.Dimensions.minimumTouchTarget
         )
         .accessibilityLabel("Add new health item")
-        .accessibilityHint("Opens form to add medication, supplement, or diet item")
+        .accessibilityHint(groupService.userHasWritePermission ? "Opens form to add medication, supplement, or diet item" : "You don't have permission to add items")
     }
     
     // MARK: - Computed Properties
@@ -425,6 +575,12 @@ struct MyHealthDashboardView: View {
     }
     
     private func handleMarkTaken(_ itemData: (item: any HealthItem, dose: ScheduledDose?)) {
+        // Check permissions first
+        if !groupService.userHasWritePermission && groupService.currentGroup != nil {
+            showNoPermissionAlert = true
+            return
+        }
+        
         guard let dose = itemData.dose else { return }
         
         Task {
@@ -450,8 +606,9 @@ struct MyHealthDashboardView: View {
     }
     
     private func updateBadgeCount() async {
-        // Use BadgeManager for time-based badge updates
-        await BadgeManager.shared.updateBadgeForCurrentPeriod()
+        // Use BadgeManager to update badge after medication is taken
+        // This will recalculate based on remaining untaken medications
+        await BadgeManager.shared.updateAfterMedicationTaken()
     }
     
     // MARK: - Spotlight Integration
@@ -587,7 +744,7 @@ final class MyHealthDashboardViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var error: AppError?
     
-    private let dataProcessor = HealthDataProcessor()
+    private let dataProcessor = HealthDataProcessor.shared
     private var periodCounts: [TimePeriod: Int] = [:]
     
     var currentPeriod: TimePeriod {
@@ -614,12 +771,13 @@ final class MyHealthDashboardViewModel: ObservableObject {
         allItems.filter { $0.dose?.period == period }
     }
     
-    func loadData() async {
+    func loadData(forceRefresh: Bool = false) async {
         isLoading = true
         error = nil
         
         do {
-            let processedData = try await dataProcessor.processHealthDataForToday()
+            // Use the singleton's caching mechanism
+            let processedData = try await dataProcessor.getHealthData(forceRefresh: forceRefresh)
             allItems = processedData.items
             periodCounts = processedData.periodCounts
             isLoading = false

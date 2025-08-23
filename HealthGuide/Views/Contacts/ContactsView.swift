@@ -16,13 +16,29 @@ struct ContactsView: View {
         sortDescriptors: [NSSortDescriptor(keyPath: \ContactEntity.category, ascending: true),
                          NSSortDescriptor(keyPath: \ContactEntity.name, ascending: true)],
         animation: .default)
-    private var contacts: FetchedResults<ContactEntity>
+    private var coreDataContacts: FetchedResults<ContactEntity>
     
     @State private var showAddContact = false
     @State private var searchText = ""
     @State private var selectedContact: ContactEntity?
     @State private var showNoPermissionAlert = false
+    @State private var hasLoadedFirebaseContacts = false
     @StateObject private var permissionManager = PermissionManager.shared
+    @StateObject private var groupService = FirebaseGroupService.shared
+    @StateObject private var firebaseContacts = FirebaseContactsService.shared
+    
+    // Computed property to get contacts from appropriate source
+    private var contacts: [ContactEntity] {
+        // If in a group, use Firebase contacts (converted to ContactEntity for UI compatibility)
+        // Otherwise use CoreData contacts
+        if groupService.currentGroup != nil {
+            // For now, return CoreData contacts until we update AddContactView
+            // This prevents breaking the UI while we transition
+            return Array(coreDataContacts)
+        } else {
+            return Array(coreDataContacts)
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -38,7 +54,12 @@ struct ContactsView: View {
                 )
                 .ignoresSafeArea()
                 
-                contentView
+                VStack(spacing: 0) {
+                    // Show read-only banner at the top if applicable
+                    ReadOnlyBanner()
+                    
+                    contentView
+                }
             }
             .navigationTitle(AppStrings.TabBar.contacts)
             .navigationBarTitleDisplayMode(.large)
@@ -71,12 +92,27 @@ struct ContactsView: View {
                 // FetchRequest will automatically update when Core Data changes
                 // This is here for future use if we need manual refresh logic
             }
-            .onAppear {
-                print("🔍 [PERF] ContactsView appeared")
+            .task {
+                print("🔍 [PERF] ContactsView task started")
                 print("🔍 [PERF] ContactsView has \(contacts.count) contacts loaded")
+                
+                // Only load Firebase contacts once per view lifecycle
+                guard !hasLoadedFirebaseContacts else { 
+                    print("🔍 [PERF] ContactsView - Firebase contacts already loaded")
+                    return 
+                }
+                
+                // Load Firebase contacts if in a group (simple load, no listeners)
+                // Using .task instead of .onAppear prevents multiple calls
+                if groupService.currentGroup != nil {
+                    await firebaseContacts.refreshIfNeeded()
+                    hasLoadedFirebaseContacts = true
+                }
             }
             .onDisappear {
                 print("🔍 [PERF] ContactsView disappeared")
+                // Reset the flag so contacts reload when navigating back
+                hasLoadedFirebaseContacts = false
             }
         }
     }
@@ -166,7 +202,7 @@ struct ContactsView: View {
     
     private var addContactButton: some View {
         Button(action: { 
-            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
                 showNoPermissionAlert = true
             } else {
                 showAddContact = true
@@ -174,7 +210,7 @@ struct ContactsView: View {
         }) {
             Image(systemName: "plus")
                 .font(.system(size: AppTheme.ElderTypography.headline))
-                .foregroundColor(AppTheme.Colors.primaryBlue)
+                .foregroundColor(groupService.userHasWritePermission ? AppTheme.Colors.primaryBlue : Color.gray)
                 .frame(
                     minWidth: AppTheme.Dimensions.minimumTouchTarget,
                     minHeight: AppTheme.Dimensions.minimumTouchTarget
@@ -185,6 +221,7 @@ struct ContactsView: View {
         } message: {
             Text("Contact your group admin to make changes")
         }
+        .tint(AppTheme.Colors.primaryBlue)  // Ensure OK button is visible
     }
     
     private var filteredContacts: [ContactEntity] {

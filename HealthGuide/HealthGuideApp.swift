@@ -19,6 +19,7 @@ struct HealthGuideApp: App {
     @StateObject private var firebaseAuth = FirebaseAuthService.shared
     @StateObject private var firebaseGroups = FirebaseGroupService.shared
     @StateObject private var firebaseSync = FirebaseDataSyncService.shared
+    @StateObject private var firebaseServiceManager = FirebaseServiceManager.shared
     @State private var isInitialized = false
     @State private var isInBackground = false
     @Environment(\.scenePhase) var scenePhase
@@ -63,16 +64,26 @@ struct HealthGuideApp: App {
         let signpostState = AppLogger.signpost.beginInterval("AppInitialization", id: signpostID)
         let startTime = Date()
         
-        // 1. Initialize SubscriptionManager to load products
-        AppLogger.performance.debug("Initializing SubscriptionManager...")
-        await SubscriptionManager.shared.initialize()
+        // Run critical initializations in parallel for faster startup
+        await withTaskGroup(of: Void.self) { group in
+            // 1. Initialize SubscriptionManager (needed for UI)
+            group.addTask {
+                AppLogger.performance.debug("Initializing SubscriptionManager...")
+                await SubscriptionManager.shared.initialize()
+            }
+            
+            // 2. Configure AccessSessionManager (needed for access control)
+            group.addTask {
+                let accessStart = Date()
+                await self.accessManager.configure()
+                AppLogger.performance.debug("AccessSessionManager configured in \(Date().timeIntervalSince(accessStart))s")
+            }
+            
+            // Wait for both to complete
+            await group.waitForAll()
+        }
         
-        // 2. Configure AccessSessionManager
-        let accessStart = Date()
-        await accessManager.configure()
-        AppLogger.performance.debug("AccessSessionManager configured in \(Date().timeIntervalSince(accessStart))s")
-        
-        // 3. Handle trial initialization with CloudKit-based manager
+        // 3. Handle trial initialization with CloudKit-based manager (now with caching)
         let cloudTrialManager = CloudTrialManager.shared
         
         do {
@@ -125,13 +136,34 @@ struct HealthGuideApp: App {
             AppLogger.main.info("Falling back to local trial management")
         }
         
-        // 4. Initialize Firebase anonymous auth
-        AppLogger.performance.debug("Initializing Firebase Auth")
-        do {
-            let userId = try await firebaseAuth.signInAnonymously()
-            AppLogger.main.info("Firebase Auth initialized with user: \(userId)")
-        } catch {
-            AppLogger.main.error("Firebase Auth failed: \(error)")
+        // 4. Initialize Firebase anonymous auth in background (don't block app launch)
+        Task.detached(priority: .background) {
+            do {
+                let userId = try await FirebaseAuthService.shared.signInAnonymously()
+                AppLogger.main.info("Firebase Auth initialized in background: \(userId)")
+                
+                // Delay group operations to avoid blocking app startup
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                
+                // Check if user already has a group (with timeout)
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask {
+                        await FirebaseGroupService.shared.loadSavedGroup()
+                    }
+                    
+                    // Wait maximum 5 seconds for group load
+                    _ = await group.waitForAll()
+                }
+                
+                // If no group exists, create a personal group for this user
+                if await FirebaseGroupService.shared.currentGroup == nil {
+                    AppLogger.main.info("Creating personal group for new user (delayed)")
+                    try await FirebaseGroupService.shared.createPersonalGroup()
+                    AppLogger.main.info("Personal group created with invite code")
+                }
+            } catch {
+                AppLogger.main.error("Firebase initialization failed: \(error)")
+            }
         }
         
         // 5. TEMPORARILY DISABLED: CloudKit sync service to prevent Firestore conflicts
@@ -147,10 +179,12 @@ struct HealthGuideApp: App {
         */
         AppLogger.main.info("CloudKit sync disabled - using Firestore for group sharing only")
         
-        // 5. Clean up old notifications and schedule daily cleanup
-        AppLogger.performance.debug("Setting up notification cleanup")
-        await NotificationManager.shared.cleanupPreviousDayNotifications()
-        await NotificationManager.shared.scheduleEndOfDayCleanup()
+        // 5. Clean up old notifications in background (not critical for startup)
+        Task.detached {
+            AppLogger.performance.debug("Setting up notification cleanup")
+            await NotificationManager.shared.scheduleEndOfDayCleanup()
+            await NotificationManager.shared.cleanupPreviousDayNotifications()
+        }
         
         // 6. Mark as initialized
         await MainActor.run {
@@ -185,10 +219,8 @@ struct HealthGuideApp: App {
                     AppLogger.main.info("✅ SubscriptionManager resumed after background")
                 }
                 
-                // Update badge
-                Task { @MainActor in
-                    await BadgeManager.shared.updateBadgeForCurrentPeriod()
-                }
+                // Don't update badge when returning from background
+                // Badge should persist from notification until medication is taken
             }
             
         case .inactive:
@@ -208,6 +240,9 @@ struct HealthGuideApp: App {
             
             // Stop subscription transaction listener (CRITICAL!)
             SubscriptionManager.shared.cleanup()
+            
+            // Stop Firebase service listeners
+            FirebaseServiceManager.shared.cleanup()
             
             // Pause other periodic tasks
             AccessSessionManager.shared.cleanup()
@@ -254,12 +289,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Setup notification delegate immediately
         NotificationManager.shared.setupDelegate()
         
-        // Clear badge on app launch (Swift 6 compliant)
-        DispatchQueue.main.async {
-            Task {
-                await BadgeManager.shared.clearBadge()
-            }
-        }
+        // Don't update badge on app launch
+        // Badge should only be set by notifications and updated when medications are taken
+        // This preserves the notification badge count
         
         // Defer memory monitoring until after launch
         // _ = MemoryMonitor.shared
@@ -272,13 +304,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         AppLogger.main.info("App became active")
         
-        // Don't re-initialize - this is handled in scene phase
-        // Just update the badge
-        DispatchQueue.main.async {
-            Task {
-                await BadgeManager.shared.updateBadgeForCurrentPeriod()
-            }
-        }
+        // Don't update badge when app becomes active
+        // Badge should only update when medications are marked as taken
+        // This preserves the notification badge count
     }
     
     /// Handle app entering background - pause expensive operations

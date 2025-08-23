@@ -573,7 +573,8 @@ final class SubscriptionManager: ObservableObject {
         userDefaults.set(sessionsUsed, forKey: UserDefaultsKeys.trialSessionsUsed)
         userDefaults.set(true, forKey: UserDefaultsKeys.hasUsedTrial)
         
-        print("📝 Trial state synced from persistent storage - Sessions: \(sessionsUsed)/30")
+        // 14-day unlimited trial - no need to log session counts
+        AppLogger.main.debug("Trial state restored: Day \(Calendar.current.dateComponents([.day], from: startDate, to: Date()).day ?? 0) of 14")
     }
     
     /// Purchase subscription
@@ -917,14 +918,15 @@ final class SubscriptionManager: ObservableObject {
         return userDefaults.string(forKey: "stripe.subscriptionId") ?? ""
     }
     
-    /// Check if user should see payment prompt (day 5 or later)
+    /// Check if user should see payment prompt (days 12-14 only)
     var shouldShowPaymentPrompt: Bool {
         guard case .trial(let startDate, _) = subscriptionState else { return false }
         
         let daysSinceStart = Calendar.current.dateComponents([.day], from: startDate, to: Date()).day ?? 0
         let hasSeenPrompt = userDefaults.bool(forKey: "hasSeenPaymentPrompt")
         
-        return daysSinceStart >= 5 && !hasSeenPrompt
+        // Only show on days 12, 13, or 14 of the trial
+        return daysSinceStart >= 12 && daysSinceStart <= 14 && !hasSeenPrompt
     }
     
     /// Mark payment prompt as seen

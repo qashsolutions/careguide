@@ -16,6 +16,8 @@ struct CareMemosView: View {
     @StateObject private var audioManager = AudioManager.shared
     @StateObject private var viewModel = CareMemosViewModel()
     @StateObject private var permissionManager = PermissionManager.shared
+    @StateObject private var groupService = FirebaseGroupService.shared
+    @StateObject private var firebaseMemos = FirebaseMemosService.shared
     
     @State private var showingDeleteAlert = false
     @State private var memoToDelete: CareMemo?
@@ -40,6 +42,9 @@ struct CareMemosView: View {
                 .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
+                    // Show read-only banner at the top if applicable
+                    ReadOnlyBanner()
+                    
                     // Recording section
                     recordingSection
                         .padding(.horizontal, AppTheme.Spacing.screenPadding)
@@ -66,6 +71,7 @@ struct CareMemosView: View {
             .navigationTitle("Memos")
             .navigationBarTitleDisplayMode(.large)
             .task {
+                // Only load Core Data memos - Firebase data handled by real-time listeners
                 await viewModel.loadMemos()
             }
             .onReceive(NotificationCenter.default.publisher(for: .careMemoDataDidChange)) { _ in
@@ -116,6 +122,7 @@ struct CareMemosView: View {
             } message: {
                 Text("Contact your group admin to make changes")
             }
+            .tint(AppTheme.Colors.primaryBlue)  // Ensure OK button is visible
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .background {
                     // Stop recording and cleanup when app goes to background
@@ -147,11 +154,12 @@ struct CareMemosView: View {
     // MARK: - Recording Section
     private var recordingSection: some View {
         VStack(spacing: AppTheme.Spacing.medium) {
-            // Record button
+            // Record button (disabled for read-only users)
             Button(action: toggleRecording) {
                 ZStack {
                     Circle()
-                        .fill(audioManager.isRecording ? AppTheme.Colors.errorRed : AppTheme.Colors.primaryBlue)
+                        .fill(audioManager.isRecording ? AppTheme.Colors.errorRed : 
+                              (groupService.userHasWritePermission ? AppTheme.Colors.primaryBlue : Color.gray))
                         .frame(width: 80, height: 80)
                     
                     Image(systemName: audioManager.isRecording ? "stop.fill" : "mic.fill")
@@ -159,7 +167,7 @@ struct CareMemosView: View {
                         .foregroundColor(.white)
                 }
             }
-            .disabled(viewModel.memoCount >= 10 && !audioManager.isRecording)
+            .disabled((viewModel.memoCount >= 10 && !audioManager.isRecording) || !groupService.userHasWritePermission)
             .scaleEffect(audioManager.isRecording ? 1.1 : 1.0)
             .animation(.easeInOut(duration: 0.3), value: audioManager.isRecording)
             
@@ -272,7 +280,7 @@ struct CareMemosView: View {
             stopRecording()
         } else {
             // Check permissions before recording
-            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
                 showNoPermissionAlert = true
             } else {
                 startRecording()
@@ -358,7 +366,29 @@ struct CareMemosView: View {
         )
         
         Task {
+            // Save to CoreData
             await viewModel.saveMemo(memo)
+            
+            // Sync to Firebase if in a group
+            if groupService.currentGroup != nil {
+                do {
+                    // Read the audio file data
+                    let audioData = try Data(contentsOf: pending.url)
+                    
+                    try await firebaseMemos.saveMemo(
+                        title: title,
+                        audioData: audioData,
+                        duration: pending.duration,
+                        transcription: nil,
+                        priority: nil,
+                        relatedMedicationIds: nil
+                    )
+                    AppLogger.main.info("✅ Memo synced to Firebase for group sharing")
+                } catch {
+                    AppLogger.main.error("⚠️ Failed to sync memo to Firebase: \(error)")
+                    // Don't show error - CoreData save succeeded
+                }
+            }
         }
         
         // Clear pending result

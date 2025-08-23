@@ -28,3 +28,6 @@ Thumbs.db
 # Firebase
 GoogleService-Info.plist
 HealthGuide/GoogleService-Info.plist
+
+# Documentation (temporary)
+*.md

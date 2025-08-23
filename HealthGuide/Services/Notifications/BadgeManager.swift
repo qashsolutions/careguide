@@ -64,9 +64,8 @@ final class BadgeManager: ObservableObject {
             // Count unmarked items in current period
             let unmarkedCount = currentPeriodDoses.filter { !$0.isTaken }.count
             
-            // Update badge
+            // Update badge with the unmarked count
             await updateBadge(unmarkedCount)
-            
             print("📛 Badge updated for \(currentPeriod.rawValue): \(unmarkedCount) items")
         } catch {
             print("❌ Failed to update badge: \(error)")
@@ -75,10 +74,17 @@ final class BadgeManager: ObservableObject {
         }
     }
     
-    /// Clear all badges (call on app launch)
+    /// Clear all badges (use with caution - only when all medications are taken)
     func clearBadge() async {
         await updateBadge(0)
         print("📛 Badge cleared")
+    }
+    
+    /// Update badge after marking medication as taken
+    /// This recalculates the badge based on remaining untaken medications
+    func updateAfterMedicationTaken() async {
+        // Always recalculate based on current period's untaken medications
+        await updateBadgeForCurrentPeriod()
     }
     
     /// Force refresh badge count
@@ -180,6 +186,13 @@ extension BadgeManager {
     nonisolated func updateBadgeFromBackground() {
         Task { @MainActor in
             await updateBadgeForCurrentPeriod()
+        }
+    }
+    
+    /// Thread-safe badge update after medication taken
+    nonisolated func updateAfterMedicationTakenFromBackground() {
+        Task { @MainActor in
+            await updateAfterMedicationTaken()
         }
     }
     

@@ -76,6 +76,14 @@ final class FirebaseAuthService: ObservableObject {
         return try await signInAnonymously()
     }
     
+    // MARK: - Get Current User ID (Synchronous)
+    func getCurrentUserIdSync() throws -> String {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            throw AuthError.notAuthenticated
+        }
+        return userId
+    }
+    
     // MARK: - Link Anonymous Account (for future use)
     @MainActor
     func linkAnonymousAccount(email: String, password: String) async throws {
@@ -119,6 +127,7 @@ final class FirebaseAuthService: ObservableObject {
     enum AuthError: LocalizedError {
         case notAnonymous
         case noUser
+        case notAuthenticated
         
         var errorDescription: String? {
             switch self {
@@ -126,6 +135,8 @@ final class FirebaseAuthService: ObservableObject {
                 return "Current user is not anonymous"
             case .noUser:
                 return "No authenticated user found"
+            case .notAuthenticated:
+                return "User is not authenticated"
             }
         }
     }

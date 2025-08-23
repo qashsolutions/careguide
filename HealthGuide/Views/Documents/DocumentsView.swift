@@ -18,6 +18,11 @@ struct DocumentsView: View {
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var accessManager = AccessSessionManager.shared
     @StateObject private var permissionManager = PermissionManager.shared
+    @StateObject private var groupService = FirebaseGroupService.shared
+    @StateObject private var firebaseDocuments = FirebaseDocumentsService.shared
+    
+    // Static variable to ensure categories are only created once per app session
+    private static var hasCreatedDefaultCategories = false
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \DocumentCategoryEntity.name, ascending: true)],
@@ -39,6 +44,7 @@ struct DocumentsView: View {
     @State private var showUpgradeAlert = false
     @State private var hasLoadedCategories = false
     @State private var showNoPermissionAlert = false
+    @State private var hasLoadedFirebaseDocuments = false
     
     var body: some View {
         NavigationStack {
@@ -55,6 +61,9 @@ struct DocumentsView: View {
                 .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
+                    // Show read-only banner at the top if applicable
+                    ReadOnlyBanner()
+                    
                     // Storage meter
                     storageMeter
                         .padding(.horizontal, AppTheme.Spacing.screenPadding)
@@ -76,7 +85,7 @@ struct DocumentsView: View {
                     Menu {
                         Button(action: { 
                             // Check permissions first
-                            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
                                 showNoPermissionAlert = true
                             } else if subscriptionManager.subscriptionState.isActive || subscriptionManager.subscriptionState.isInTrial {
                                 showFilePicker = true 
@@ -88,10 +97,11 @@ struct DocumentsView: View {
                         }) {
                             Label("Choose File", systemImage: "doc.badge.plus")
                         }
+                        .disabled(!groupService.userHasWritePermission)
                         
                         Button(action: { 
                             // Check permissions first
-                            if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
                                 showNoPermissionAlert = true
                             } else if subscriptionManager.subscriptionState.isActive || subscriptionManager.subscriptionState.isInTrial {
                                 showCamera = true 
@@ -103,16 +113,24 @@ struct DocumentsView: View {
                         }) {
                             Label("Take Photo", systemImage: "camera.fill")
                         }
+                        .disabled(!groupService.userHasWritePermission)
                         
                         Divider()
                         
-                        Button(action: { showAddCategory = true }) {
+                        Button(action: { 
+                            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
+                                showNoPermissionAlert = true
+                            } else {
+                                showAddCategory = true
+                            }
+                        }) {
                             Label("New Folder", systemImage: "folder.badge.plus")
                         }
+                        .disabled(!groupService.userHasWritePermission)
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: AppTheme.ElderTypography.headline))
-                            .foregroundColor(AppTheme.Colors.primaryBlue)
+                            .foregroundColor(groupService.userHasWritePermission ? AppTheme.Colors.primaryBlue : Color.gray)
                             .frame(
                                 minWidth: AppTheme.Dimensions.minimumTouchTarget,
                                 minHeight: AppTheme.Dimensions.minimumTouchTarget
@@ -243,24 +261,36 @@ struct DocumentsView: View {
             }
         }
         .onAppear {
-            // Only create default categories once
-            guard !hasLoadedCategories else {
-                // Silently skip - no need to log
-                return
+            // Only create default categories once per app session
+            // Use static variable to prevent re-creation even if view is recreated
+            if categories.isEmpty && !DocumentsView.hasCreatedDefaultCategories {
+                print("🔍 DEBUG: DocumentsView - No categories found, creating defaults")
+                createDefaultCategoriesIfNeeded()
+                DocumentsView.hasCreatedDefaultCategories = true
+                hasLoadedCategories = true
             }
+        }
+        .onDisappear {
+            // Reset the Firebase flag so documents reload when navigating back
+            // But don't reset hasLoadedCategories - categories should persist
+            hasLoadedFirebaseDocuments = false
+        }
+        .task {
+            // Only load Firebase documents once per view lifecycle
+            guard !hasLoadedFirebaseDocuments else { return }
             
-            print("🔍 DEBUG: DocumentsView appearing for first time")
-            print("🔍 DEBUG: Categories count: \(categories.count)")
-            
-            createDefaultCategoriesIfNeeded()
-            hasLoadedCategories = true
-            
-            print("🔍 DEBUG: After createDefaultCategoriesIfNeeded - created default categories")
+            // Load Firebase documents if in a group
+            if groupService.currentGroup != nil {
+                await firebaseDocuments.refreshIfNeeded()
+                hasLoadedFirebaseDocuments = true
+            }
         }
         // Add pull-to-refresh for manual updates
         .refreshable {
-            // Trigger Core Data refresh by changing the fetch request
-            // This will automatically reload the documents and categories
+            // Manual refresh from pull-to-refresh
+            if groupService.currentGroup != nil {
+                await firebaseDocuments.loadDocuments()
+            }
         }
         // Add debounced selective listening for document changes
         // Only responds to document-specific changes, not all Core Data saves
@@ -470,6 +500,23 @@ struct DocumentsView: View {
             
             try viewContext.save()
             
+            // Sync to Firebase if in a group
+            if groupService.currentGroup != nil {
+                // Read the file data for Firebase upload
+                let fileData = try Data(contentsOf: destinationURL)
+                
+                // Upload to Firebase
+                try await firebaseDocuments.saveDocument(
+                    filename: filename,
+                    fileType: fileExtension,
+                    category: category.name ?? "",
+                    fileData: fileData,
+                    notes: notes
+                )
+                
+                AppLogger.main.info("✅ Document synced to Firebase for group sharing")
+            }
+            
             // Clear pending file
             pendingFileToSave = nil
             showSaveDocument = false
@@ -518,6 +565,20 @@ struct DocumentsView: View {
             category.updateDocumentCount()
             
             try viewContext.save()
+            
+            // Sync to Firebase if in a group
+            if groupService.currentGroup != nil {
+                // Upload to Firebase
+                try await firebaseDocuments.saveDocument(
+                    filename: filename,
+                    fileType: "jpg",
+                    category: category.name,
+                    fileData: imageData,
+                    notes: notes
+                )
+                
+                AppLogger.main.info("✅ Photo document synced to Firebase for group sharing")
+            }
             
             // Clear captured image
             capturedImageToSave = nil
