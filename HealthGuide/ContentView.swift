@@ -9,6 +9,7 @@
 
 import SwiftUI
 import CoreData
+import FirebaseAuth
 
 @available(iOS 18.0, *)
 struct ContentView: View {
@@ -23,9 +24,18 @@ struct ContentView: View {
     @State private var sessionIndicatorScale: CGFloat = 0.5
     @State private var sessionIndicatorOpacity: Double = 0
     
+    // Access revocation handling
+    @State private var showAccessRevokedModal = false
+    @State private var accessRevokedMessage = "Your access to this group has been revoked."
+    @State private var permissionErrorCount = 0
+    
     // Trial status modal
     @State private var showTrialStatusModal = false
+    @State private var showJoinGroupPrompt = false
     @AppStorage("lastTrialModalShownDate") private var lastTrialModalShownDate: String = ""
+    @AppStorage("hasCompletedGroupSetup") private var hasCompletedGroupSetup: Bool = false
+    @AppStorage("isSecondaryUser") private var isSecondaryUser: Bool = false
+    @AppStorage("hasSeenPrivacyNotice") private var hasSeenPrivacyNotice: Bool = false
     
     // Debug counter to track view recreations
     static var appearCount = 0
@@ -38,6 +48,16 @@ struct ContentView: View {
             if scenePhase == .background {
                 Color.clear
                     .frame(width: 1, height: 1)
+            } else if !hasSeenPrivacyNotice && biometricAuth.isAuthenticated {
+                // Show privacy notice for first-time users after biometric setup
+                PrivacyNoticeView(hasSeenPrivacyNotice: $hasSeenPrivacyNotice)
+            } else if !hasCompletedGroupSetup && biometricAuth.isAuthenticated {
+                // Show join prompt for NEW users after seeing privacy notice
+                JoinGroupPromptView(
+                    hasCompletedSetup: $hasCompletedGroupSetup,
+                    isSecondaryUser: $isSecondaryUser
+                )
+                .environmentObject(subscriptionManager)
             } else if !accessManager.canAccess && !subscriptionManager.subscriptionState.isActive {
                 DailyAccessLockView()
                     .onAppear {
@@ -50,20 +70,27 @@ struct ContentView: View {
                         print("⏱️ [VIEW] DailyAccessLockView disappeared")
                     }
             } else if biometricAuth.isAuthenticated || !biometricAuth.isBiometricEnabled {
-                TabBarView()
-                    .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
-                    .onAppear {
-                        print("⏱️ [VIEW] TabBarView appeared")
-                        print("  - Can access: \(accessManager.canAccess)")
-                        print("  - Is authenticated: \(biometricAuth.isAuthenticated)")
-                        print("  - Biometric enabled: \(biometricAuth.isBiometricEnabled)")
-                    }
-                    .onDisappear {
-                        print("⏱️ [VIEW] TabBarView disappeared")
-                    }
-                    .task {
-                        // Start daily session if needed (trial users)
-                        if accessManager.canAccess && subscriptionManager.subscriptionState.isInTrial {
+                // Check if user still has valid group access
+                if let group = FirebaseGroupService.shared.currentGroup,
+                   let userId = Auth.auth().currentUser?.uid,
+                   !group.memberIds.contains(userId) && !group.adminIds.contains(userId) {
+                    // User no longer has access - show revoked view
+                    AccessRevokedView(message: "Your access to this group has been revoked by the admin.")
+                } else {
+                    TabBarView()
+                        .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
+                        .onAppear {
+                            print("⏱️ [VIEW] TabBarView appeared")
+                            print("  - Can access: \(accessManager.canAccess)")
+                            print("  - Is authenticated: \(biometricAuth.isAuthenticated)")
+                            print("  - Biometric enabled: \(biometricAuth.isBiometricEnabled)")
+                        }
+                        .onDisappear {
+                            print("⏱️ [VIEW] TabBarView disappeared")
+                        }
+                        .task {
+                            // Start daily session if needed (trial users)
+                            if accessManager.canAccess && subscriptionManager.subscriptionState.isInTrial {
                             let sessionStart = Date()
                             print("⏱️ [PERF] Starting daily session...")
                             print("🎯 Trial session indicator will show")
@@ -97,9 +124,10 @@ struct ContentView: View {
                             await accessManager.startDailySession()
                         }
                         
-                        // Notifications will be scheduled lazily when user has items
-                        // This reduces CPU spike and memory usage at launch
-                    }
+                            // Notifications will be scheduled lazily when user has items
+                            // This reduces CPU spike and memory usage at launch
+                        }
+                }
             } else {
                 AuthenticationView()
                     .onAppear {
@@ -137,6 +165,12 @@ struct ContentView: View {
             // Check if we should show trial status modal
             checkTrialStatusModal()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowTrialModal"))) { _ in
+            // Show trial modal when requested (after user chooses "Start Trial Instead")
+            if hasCompletedGroupSetup {
+                showTrialStatusModal = true
+            }
+        }
         .sheet(isPresented: $showTrialStatusModal) {
             TrialStatusModal(isPresented: $showTrialStatusModal)
                 .environmentObject(subscriptionManager)
@@ -144,11 +178,41 @@ struct ContentView: View {
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled(cloudTrialManager.trialState?.isExpired ?? false) // Can't dismiss if expired
         }
+        .fullScreenCover(isPresented: $showAccessRevokedModal) {
+            AccessRevokedView(message: accessRevokedMessage)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .memberAccessRevoked)) { notification in
+            // Handle access revocation
+            if let userInfo = notification.userInfo,
+               let message = userInfo["message"] as? String {
+                accessRevokedMessage = message
+            }
+            showAccessRevokedModal = true
+            
+            // Force re-check of access and group status
+            hasCompletedGroupSetup = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .firebasePermissionDenied)) { _ in
+            // Count permission errors - show modal after a few errors
+            permissionErrorCount += 1
+            if permissionErrorCount >= 2 && !showAccessRevokedModal {
+                accessRevokedMessage = "You no longer have access to this care group"
+                showAccessRevokedModal = true
+                hasCompletedGroupSetup = false
+            }
+        }
+        // Removed fullScreenCover - join prompt is shown inline for new users
     }
     
     // MARK: - Helper Methods
     
     private func checkTrialStatusModal() {
+        // Don't show trial modal if user hasn't completed setup (new users)
+        guard hasCompletedGroupSetup else {
+            // New users see the join prompt inline, not as a modal
+            return
+        }
+        
         // Only show for trial users or expired trials
         guard let trialState = cloudTrialManager.trialState else { return }
         

@@ -144,6 +144,9 @@ final class AddItemViewModel: ObservableObject {
             try await FirebaseGroupDataService.shared.saveMedication(medication)
             print("✅ Medication synced to Firebase group: \(medication.name)")
             
+            // Don't create doses here - HealthDataProcessor will handle it
+            // This prevents duplicate dose creation
+            
             // If in a group, reference will be added automatically
             if let group = FirebaseGroupService.shared.currentGroup {
                 print("📤 Synced to group: \(group.name) (ID: \(group.id))")
@@ -164,6 +167,49 @@ final class AddItemViewModel: ObservableObject {
         }
     }
     
+    // DEPRECATED: Dose creation moved to HealthDataProcessor to prevent duplicates
+    private func createDosesForMedication(_ medication: Medication) async {
+        // Function body commented out to prevent duplicate dose creation
+        /*
+        let calendar = Calendar.current
+        let today = Date()
+        
+        // Generate dose times for today based on schedule
+        let doseTimes = medication.schedule.generateDoseTimes(for: today)
+        
+        for doseTime in doseTimes {
+            // Only create doses for future times
+            if doseTime > today {
+                // Determine period from time
+                let hour = calendar.component(.hour, from: doseTime)
+                let period: String
+                if hour < 12 {
+                    period = "breakfast"
+                } else if hour < 17 {
+                    period = "lunch"
+                } else {
+                    period = "dinner"
+                }
+                
+                do {
+                    try await FirebaseGroupDataService.shared.saveOrUpdateDose(
+                        itemId: medication.id.uuidString,
+                        itemName: medication.name,
+                        itemType: "medication",
+                        period: period,
+                        itemDosage: medication.dosage,
+                        scheduledTime: doseTime,
+                        isTaken: false
+                    )
+                    print("✅ Created dose for \(medication.name) at \(doseTime)")
+                } catch {
+                    print("❌ Failed to create dose: \(error)")
+                }
+            }
+        }
+        */
+    }
+    
     private func syncToCloudIfNeeded(supplement: Supplement) async {
         print("\n🔥 syncToCloudIfNeeded called for supplement: \(supplement.name)")
         print("   Checking current group...")
@@ -175,6 +221,9 @@ final class AddItemViewModel: ObservableObject {
             print("   Calling FirebaseGroupDataService.saveSupplement...")
             try await FirebaseGroupDataService.shared.saveSupplement(supplement)
             print("✅ Supplement synced to Firebase group: \(supplement.name)")
+            
+            // Don't create doses here - HealthDataProcessor will handle it
+            // This prevents duplicate dose creation
             
             // If in a group, reference will be added automatically
             if let group = FirebaseGroupService.shared.currentGroup {
@@ -194,6 +243,49 @@ final class AddItemViewModel: ObservableObject {
             }
             // Note: Local data is already saved, so the item exists locally
         }
+    }
+    
+    // DEPRECATED: Dose creation moved to HealthDataProcessor to prevent duplicates
+    private func createDosesForSupplement(_ supplement: Supplement) async {
+        // Function body commented out to prevent duplicate dose creation
+        /*
+        let calendar = Calendar.current
+        let today = Date()
+        
+        // Generate dose times for today based on schedule
+        let doseTimes = supplement.schedule.generateDoseTimes(for: today)
+        
+        for doseTime in doseTimes {
+            // Only create doses for future times
+            if doseTime > today {
+                // Determine period from time
+                let hour = calendar.component(.hour, from: doseTime)
+                let period: String
+                if hour < 12 {
+                    period = "breakfast"
+                } else if hour < 17 {
+                    period = "lunch"
+                } else {
+                    period = "dinner"
+                }
+                
+                do {
+                    try await FirebaseGroupDataService.shared.saveOrUpdateDose(
+                        itemId: supplement.id.uuidString,
+                        itemName: supplement.name,
+                        itemType: "supplement",
+                        period: period,
+                        itemDosage: supplement.dosage,
+                        scheduledTime: doseTime,
+                        isTaken: false
+                    )
+                    print("✅ Created dose for \(supplement.name) at \(doseTime)")
+                } catch {
+                    print("❌ Failed to create dose: \(error)")
+                }
+            }
+        }
+        */
     }
     
     private func syncToCloudIfNeeded(diet: Diet) async {

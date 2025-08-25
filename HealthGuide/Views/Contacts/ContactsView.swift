@@ -28,15 +28,14 @@ struct ContactsView: View {
     @StateObject private var firebaseContacts = FirebaseContactsService.shared
     
     // Computed property to get contacts from appropriate source
-    private var contacts: [ContactEntity] {
-        // If in a group, use Firebase contacts (converted to ContactEntity for UI compatibility)
-        // Otherwise use CoreData contacts
+    private var displayedContacts: [FirestoreContact] {
+        // If in a group, use Firebase contacts
         if groupService.currentGroup != nil {
-            // For now, return CoreData contacts until we update AddContactView
-            // This prevents breaking the UI while we transition
-            return Array(coreDataContacts)
+            return firebaseContacts.contacts
         } else {
-            return Array(coreDataContacts)
+            // Return empty array for now when not in a group
+            // Core Data contacts would need conversion
+            return []
         }
     }
     
@@ -94,7 +93,8 @@ struct ContactsView: View {
             }
             .task {
                 print("🔍 [PERF] ContactsView task started")
-                print("🔍 [PERF] ContactsView has \(contacts.count) contacts loaded")
+                print("🔍 [PERF] ContactsView has \(displayedContacts.count) contacts loaded")
+                print("🔍 [PERF] Firebase has \(firebaseContacts.contacts.count) contacts")
                 
                 // Only load Firebase contacts once per view lifecycle
                 guard !hasLoadedFirebaseContacts else { 
@@ -119,7 +119,17 @@ struct ContactsView: View {
     
     @ViewBuilder
     private var contentView: some View {
-        if filteredContacts.isEmpty && searchText.isEmpty {
+        // If in a Firebase group, show Firebase contacts
+        if groupService.currentGroup != nil && !firebaseContacts.contacts.isEmpty {
+            ScrollView {
+                VStack(spacing: AppTheme.Spacing.medium) {
+                    ForEach(firebaseContacts.contacts, id: \.id) { contact in
+                        FirebaseContactCard(contact: contact)
+                    }
+                }
+                .padding(AppTheme.Spacing.screenPadding)
+            }
+        } else if filteredContacts.isEmpty && searchText.isEmpty {
             emptyStateView
         } else if filteredContacts.isEmpty {
             noResultsView
@@ -165,7 +175,7 @@ struct ContactsView: View {
                 .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
             Button(action: { 
-                if !permissionManager.currentUserCanEdit && permissionManager.isInGroup {
+                if !groupService.userHasWritePermission && groupService.currentGroup != nil {
                     showNoPermissionAlert = true
                 } else {
                     showAddContact = true
@@ -176,10 +186,13 @@ struct ContactsView: View {
                     .fontWeight(AppTheme.Typography.semibold)
                     .frame(maxWidth: .infinity)
                     .frame(height: AppTheme.Dimensions.elderButtonHeight)
-                    .background(AppTheme.Colors.primaryBlue)
+                    .background(groupService.userHasWritePermission || groupService.currentGroup == nil 
+                        ? AppTheme.Colors.primaryBlue 
+                        : Color.gray.opacity(0.5))
                     .foregroundColor(.white)
                     .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
             }
+            .disabled(!groupService.userHasWritePermission && groupService.currentGroup != nil)
             .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
             Spacer()
@@ -210,12 +223,15 @@ struct ContactsView: View {
         }) {
             Image(systemName: "plus")
                 .font(.system(size: AppTheme.ElderTypography.headline))
-                .foregroundColor(groupService.userHasWritePermission ? AppTheme.Colors.primaryBlue : Color.gray)
+                .foregroundColor(groupService.userHasWritePermission || groupService.currentGroup == nil 
+                    ? AppTheme.Colors.primaryBlue 
+                    : Color.gray)
                 .frame(
                     minWidth: AppTheme.Dimensions.minimumTouchTarget,
                     minHeight: AppTheme.Dimensions.minimumTouchTarget
                 )
         }
+        .disabled(!groupService.userHasWritePermission && groupService.currentGroup != nil)
         .alert("View Only Access", isPresented: $showNoPermissionAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -228,9 +244,9 @@ struct ContactsView: View {
         let startTime = Date()
         let result: [ContactEntity]
         if searchText.isEmpty {
-            result = Array(contacts)
+            result = Array(coreDataContacts)
         } else {
-            result = contacts.filter { contact in
+            result = coreDataContacts.filter { contact in
                 (contact.name?.localizedCaseInsensitiveContains(searchText) ?? false) ||
                 (contact.phone?.contains(searchText) ?? false) ||
                 (contact.notes?.localizedCaseInsensitiveContains(searchText) ?? false) || // specialization
@@ -239,7 +255,7 @@ struct ContactsView: View {
         }
         let elapsed = Date().timeIntervalSince(startTime)
         if elapsed > 0.01 { // Only log if takes more than 10ms
-            print("🔍 [PERF] ContactsView.filteredContacts took \(elapsed)s for \(contacts.count) contacts")
+            print("🔍 [PERF] ContactsView.filteredContacts took \(elapsed)s for \(coreDataContacts.count) contacts")
         }
         return result
     }
@@ -254,6 +270,56 @@ struct ContactsView: View {
             print("🔍 [PERF] ContactsView.groupedContacts took \(elapsed)s for \(filteredContacts.count) contacts")
         }
         return result
+    }
+}
+
+// MARK: - Firebase Contact Card (Temporary)
+@available(iOS 18.0, *)
+struct FirebaseContactCard: View {
+    let contact: FirestoreContact
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(contact.name)
+                        .font(.monaco(AppTheme.ElderTypography.body))
+                        .fontWeight(.medium)
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    
+                    if let category = contact.category, !category.isEmpty {
+                        Text(category)
+                            .font(.monaco(AppTheme.ElderTypography.caption))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                }
+                
+                Spacer()
+                
+                if contact.isPrimary {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.yellow)
+                        .font(.system(size: 20))
+                }
+            }
+            
+            if let phone = contact.phone, !phone.isEmpty {
+                HStack {
+                    Image(systemName: "phone.fill")
+                        .foregroundColor(AppTheme.Colors.primaryBlue)
+                        .font(.system(size: 14))
+                    Text(phone)
+                        .font(.monaco(AppTheme.ElderTypography.callout))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(AppTheme.Spacing.medium)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        )
     }
 }
 

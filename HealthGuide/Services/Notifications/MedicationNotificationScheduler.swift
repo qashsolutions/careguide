@@ -129,7 +129,37 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
         let startOfToday = calendar.startOfDay(for: Date())
         guard let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) else { return }
         
-        let allDoses = await CoreDataManager.shared.fetchTodaysDoses(from: startOfToday, to: endOfToday)
+        // Check if we're in Firebase mode or Core Data mode
+        let allDoses: [DoseData]
+        if await FirebaseGroupService.shared.currentGroup != nil {
+            // Firebase mode - fetch from Firebase
+            do {
+                let firebaseDoses = try await FirebaseGroupDataService.shared.fetchTodaysDoses()
+                // Convert FirestoreDose to DoseData
+                allDoses = firebaseDoses.map { firestoreDose in
+                    DoseData(
+                        id: UUID(uuidString: firestoreDose.id) ?? UUID(),
+                        scheduledTime: firestoreDose.scheduledTime,
+                        isTaken: firestoreDose.isTaken,
+                        period: firestoreDose.period,
+                        medicationName: firestoreDose.itemType == "medication" ? firestoreDose.itemName : nil,
+                        medicationDosage: firestoreDose.itemType == "medication" ? (firestoreDose.itemDosage ?? "") : nil,
+                        supplementName: firestoreDose.itemType == "supplement" ? firestoreDose.itemName : nil,
+                        supplementDosage: firestoreDose.itemType == "supplement" ? (firestoreDose.itemDosage ?? "") : nil,
+                        dietName: firestoreDose.itemType == "diet" ? firestoreDose.itemName : nil,
+                        dietPortion: firestoreDose.itemType == "diet" ? (firestoreDose.itemDosage ?? "") : nil
+                    )
+                }
+                print("📱 Fetched \(allDoses.count) doses from Firebase for notifications")
+            } catch {
+                print("❌ Failed to fetch doses from Firebase: \(error)")
+                allDoses = []
+            }
+        } else {
+            // Core Data mode - fetch from Core Data
+            allDoses = await CoreDataManager.shared.fetchTodaysDoses(from: startOfToday, to: endOfToday)
+            print("📱 Fetched \(allDoses.count) doses from Core Data for notifications")
+        }
         
         // Group doses by period
         var breakfastItems: [(name: String, dosage: String, type: String)] = []
@@ -268,9 +298,9 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
         content.interruptionLevel = .timeSensitive
         content.relevanceScore = 1.0
         
-        // Set badge to show the number of items to take
-        // This badge will persist until the user marks medications as taken
-        content.badge = NSNumber(value: itemCount)
+        // Don't set badge here - BadgeManager handles all badge updates
+        // to ensure only current period items are counted
+        // content.badge = nil  // Let BadgeManager control badges
         
         // Set category for action buttons
         content.categoryIdentifier = "MEDICATION"
@@ -460,16 +490,30 @@ final class MedicationNotificationScheduler: ObservableObject, @unchecked Sendab
     // Helper to check if all items in a period are taken
     private func checkIfAllItemsTakenForPeriod(_ period: TimePeriod) async -> Bool {
         do {
-            // Fetch all doses for today
-            let allDoses = try await CoreDataManager.shared.fetchDosesForDate(Date())
-            
-            // Filter doses for this specific period (period is stored as string in DoseRecord)
-            let periodDoses = allDoses.filter { dose in
-                dose.period.lowercased() == period.rawValue.lowercased()
+            // Check if we're in Firebase mode or Core Data mode
+            if await FirebaseGroupService.shared.currentGroup != nil {
+                // Firebase mode
+                let firebaseDoses = try await FirebaseGroupDataService.shared.fetchTodaysDoses()
+                
+                // Filter doses for this specific period
+                let periodDoses = firebaseDoses.filter { dose in
+                    dose.period.lowercased() == period.rawValue.lowercased()
+                }
+                
+                // If no doses exist or all are taken, return true
+                return periodDoses.isEmpty || periodDoses.allSatisfy { $0.isTaken }
+            } else {
+                // Core Data mode
+                let allDoses = try await CoreDataManager.shared.fetchDosesForDate(Date())
+                
+                // Filter doses for this specific period (period is stored as string in DoseRecord)
+                let periodDoses = allDoses.filter { dose in
+                    dose.period.lowercased() == period.rawValue.lowercased()
+                }
+                
+                // If no doses exist or all are taken, return true
+                return periodDoses.isEmpty || periodDoses.allSatisfy { $0.isTaken }
             }
-            
-            // If no doses exist or all are taken, return true
-            return periodDoses.isEmpty || periodDoses.allSatisfy { $0.isTaken }
         } catch {
             print("❌ Error checking doses for period: \(error)")
             return false

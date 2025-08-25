@@ -144,7 +144,9 @@ final class FirebaseServiceManager: ObservableObject {
     
     private func startDocumentsListener() async {
         guard !activeListeners.contains("documents") else {
-            AppLogger.main.info("⏭️ Documents listener already active")
+            AppLogger.main.info("⏭️ Documents listener already active - reloading data for current group")
+            // Even if listener is active, reload data for the current group
+            await documentsService.loadDocuments()
             return
         }
         
@@ -159,7 +161,9 @@ final class FirebaseServiceManager: ObservableObject {
     
     private func startContactsListener() async {
         guard !activeListeners.contains("contacts") else {
-            AppLogger.main.info("⏭️ Contacts listener already active")
+            AppLogger.main.info("⏭️ Contacts listener already active - reloading data for current group")
+            // Even if listener is active, reload data for the current group
+            await contactsService.loadContacts()
             return
         }
         
@@ -174,7 +178,9 @@ final class FirebaseServiceManager: ObservableObject {
     
     private func startMemosListener() async {
         guard !activeListeners.contains("memos") else {
-            AppLogger.main.info("⏭️ Memos listener already active")
+            AppLogger.main.info("⏭️ Memos listener already active - reloading data for current group")
+            // Even if listener is active, reload data for the current group
+            await memosService.loadMemos()
             return
         }
         
@@ -187,7 +193,7 @@ final class FirebaseServiceManager: ObservableObject {
         AppLogger.main.info("🎤 Memos listener started")
     }
     
-    private func stopAllListeners() async {
+    func stopAllListeners() async {
         // Stop all real-time listeners
         documentsService.stopListening()
         contactsService.stopListening()

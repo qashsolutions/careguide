@@ -239,6 +239,19 @@ final class AudioManager: NSObject, ObservableObject, @unchecked Sendable {
     
     // MARK: - Playback
     func play(url: URL, memoId: UUID) throws {
+        // Check if this is a remote URL (Firebase Storage)
+        if url.scheme == "https" || url.scheme == "http" {
+            // Handle remote URL by downloading first
+            Task {
+                await playRemoteAudio(url: url, memoId: memoId)
+            }
+        } else {
+            // Handle local file URL
+            try playLocalAudio(url: url, memoId: memoId)
+        }
+    }
+    
+    private func playLocalAudio(url: URL, memoId: UUID) throws {
         // All audio operations on audio queue
         try audioQueue.sync { [weak self] in
             guard let self = self else { throw AudioError.playbackFailed }
@@ -266,6 +279,39 @@ final class AudioManager: NSObject, ObservableObject, @unchecked Sendable {
                 self.currentlyPlayingId = memoId
                 self.playbackTime = 0
                 self.startPlaybackTimer()
+            }
+        }
+    }
+    
+    private func playRemoteAudio(url: URL, memoId: UUID) async {
+        do {
+            print("📥 Downloading audio from Firebase Storage: \(url)")
+            
+            // Download the audio data
+            let (data, _) = try await URLSession.shared.data(from: url)
+            
+            // Save to temporary file
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("m4a")
+            
+            try data.write(to: tempURL)
+            
+            // Play the downloaded file
+            try playLocalAudio(url: tempURL, memoId: memoId)
+            
+            print("✅ Successfully playing Firebase audio memo")
+            
+            // Clean up temp file after playback finishes
+            Task {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // Wait 5 seconds
+                try? FileManager.default.removeItem(at: tempURL)
+            }
+        } catch {
+            print("❌ Failed to play remote audio: \(error)")
+            Task { @MainActor in
+                self.isPlaying = false
+                self.currentlyPlayingId = nil
             }
         }
     }

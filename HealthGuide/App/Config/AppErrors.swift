@@ -121,7 +121,7 @@ enum AppError: LocalizedError {
             
         case .tooManyAttempts(let lockoutMinutes):
             return "Too many failed attempts. Please try again in \(lockoutMinutes) minutes."
-            
+        
         // Network Errors
         case .networkUnavailable:
             return "No internet connection. Some features may be limited."
@@ -206,7 +206,7 @@ enum AppError: LocalizedError {
         case .missingRequiredField(let field):
             return "Please enter \(field)."
             
-        // AI Service Errors
+        // Service Errors
         case .conflictCheckFailed(let medication):
             return "Could not check conflicts for \(medication). Please try again."
             

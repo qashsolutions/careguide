@@ -12,7 +12,7 @@ struct ReadOnlyBanner: View {
     @ObservedObject private var groupService = FirebaseGroupService.shared
     
     var body: some View {
-        if let group = groupService.currentGroup,
+        if groupService.currentGroup != nil,
            !groupService.userHasWritePermission {
             VStack(spacing: 8) {
                 HStack {
@@ -29,7 +29,7 @@ struct ReadOnlyBanner: View {
                         .foregroundColor(.secondary)
                 }
                 
-                Text("You have read-only access to \(group.name). Contact the group admin to request edit permissions.")
+                Text("You can read but cannot edit any information.")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

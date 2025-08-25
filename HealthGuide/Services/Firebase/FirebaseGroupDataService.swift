@@ -109,10 +109,21 @@ final class FirebaseGroupDataService: ObservableObject {
             return []
         }
         
-        let snapshot = try await collection.getDocuments()
-        let medications = snapshot.documents.compactMap { FirestoreMedication(from: $0) }
-        print("📊 Fetched \(medications.count) medications from group")
-        return medications
+        do {
+            let snapshot = try await collection.getDocuments()
+            let medications = snapshot.documents.compactMap { FirestoreMedication(from: $0) }
+            print("📊 Fetched \(medications.count) medications from group")
+            return medications
+        } catch {
+            // Check if this is a permission error
+            if let error = error as NSError?,
+               error.domain == "FIRFirestoreErrorDomain",
+               error.code == 7 { // Permission denied
+                print("🚫 Permission denied - posting notification")
+                NotificationCenter.default.post(name: .firebasePermissionDenied, object: nil)
+            }
+            throw error
+        }
     }
     
     /// Delete medication from group
@@ -129,6 +140,32 @@ final class FirebaseGroupDataService: ObservableObject {
         
         try await collection.document(medicationId).delete()
         AppLogger.main.info("🗑️ Deleted medication from group")
+    }
+    
+    /// Update medication in group
+    func updateMedication(_ medication: Medication) async throws {
+        guard let collection = groupPath("medications") else {
+            throw AppError.notAuthenticated
+        }
+        
+        guard let userId = currentUserId,
+              let groupId = currentGroup?.id,
+              let group = currentGroup,
+              group.writePermissionIds.contains(userId) else {
+            throw AppError.noWritePermission
+        }
+        
+        // Convert to FirestoreMedication
+        let firestoreMedication = FirestoreMedication(from: medication, groupId: groupId, userId: userId)
+        
+        do {
+            // Update the medication document
+            try await collection.document(medication.id.uuidString).setData(firestoreMedication.dictionary, merge: true)
+            AppLogger.main.info("✏️ Updated medication in group: \(medication.name)")
+        } catch {
+            AppLogger.main.error("❌ Failed to update medication: \(error)")
+            throw AppError.firebaseSyncFailed(reason: error.localizedDescription)
+        }
     }
     
     // MARK: - Supplements
@@ -182,10 +219,21 @@ final class FirebaseGroupDataService: ObservableObject {
             return []
         }
         
-        let snapshot = try await collection.getDocuments()
-        let supplements = snapshot.documents.compactMap { FirestoreSupplement(from: $0) }
-        print("📊 Fetched \(supplements.count) supplements from group")
-        return supplements
+        do {
+            let snapshot = try await collection.getDocuments()
+            let supplements = snapshot.documents.compactMap { FirestoreSupplement(from: $0) }
+            print("📊 Fetched \(supplements.count) supplements from group")
+            return supplements
+        } catch {
+            // Check if this is a permission error
+            if let error = error as NSError?,
+               error.domain == "FIRFirestoreErrorDomain",
+               error.code == 7 { // Permission denied
+                print("🚫 Permission denied - posting notification")
+                NotificationCenter.default.post(name: .firebasePermissionDenied, object: nil)
+            }
+            throw error
+        }
     }
     
     /// Delete supplement from group
@@ -262,6 +310,112 @@ final class FirebaseGroupDataService: ObservableObject {
         AppLogger.main.info("🗑️ Deleted diet from group")
     }
     
+    // MARK: - Dose Management
+    
+    /// Fetch today's doses for the group
+    func fetchTodaysDoses() async throws -> [FirestoreDose] {
+        guard let dosesPath = groupPath("doses") else {
+            print("❌ No group available for fetching doses")
+            return []
+        }
+        
+        // Get start and end of today
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        let snapshot = try await dosesPath
+            .whereField("scheduledTime", isGreaterThanOrEqualTo: Timestamp(date: startOfDay))
+            .whereField("scheduledTime", isLessThan: Timestamp(date: endOfDay))
+            .getDocuments()
+        
+        return snapshot.documents.compactMap { doc in
+            let data = doc.data()
+            return FirestoreDose(
+                id: data["id"] as? String ?? doc.documentID,
+                itemId: data["itemId"] as? String ?? "",
+                itemType: data["itemType"] as? String ?? "",
+                itemName: data["itemName"] as? String ?? "",
+                period: data["period"] as? String ?? "breakfast",
+                itemDosage: data["itemDosage"] as? String,
+                scheduledTime: (data["scheduledTime"] as? Timestamp)?.dateValue() ?? Date(),
+                isTaken: data["isTaken"] as? Bool ?? false,
+                takenAt: (data["takenAt"] as? Timestamp)?.dateValue(),
+                takenBy: data["takenBy"] as? String,
+                takenByName: data["takenByName"] as? String,
+                createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
+                updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
+            )
+        }
+    }
+    
+    /// Mark a dose as taken
+    func markDoseTaken(doseId: String, itemName: String) async throws {
+        guard let dosesPath = groupPath("doses"),
+              let userId = currentUserId else {
+            throw AppError.notAuthenticated
+        }
+        
+        // Get the current user's name for display
+        let userName = UIDevice.current.name
+        
+        // Check if the dose document exists
+        let doseDoc = dosesPath.document(doseId)
+        let snapshot = try await doseDoc.getDocument()
+        
+        if snapshot.exists {
+            // Document exists, update it
+            try await doseDoc.updateData([
+                "isTaken": true,
+                "takenAt": Timestamp(date: Date()),
+                "takenBy": userId,
+                "takenByName": userName,
+                "updatedAt": Timestamp(date: Date())
+            ])
+            print("✅ Updated existing dose as taken in Firebase: \(itemName)")
+        } else {
+            // Document doesn't exist, we need more info to create it
+            // This shouldn't happen if doses are created properly, but handle it gracefully
+            print("⚠️ Dose document doesn't exist, cannot mark as taken: \(doseId)")
+            throw AppError.internalError("Dose not found. Please refresh and try again.")
+        }
+        
+        // Update badge immediately after marking dose as taken
+        await BadgeManager.shared.updateAfterMedicationTaken()
+        print("📛 Badge updated after marking dose as taken")
+    }
+    
+    /// Create or update dose for today
+    func saveOrUpdateDose(itemId: String, itemName: String, itemType: String, period: String, itemDosage: String?, scheduledTime: Date, isTaken: Bool) async throws {
+        guard let dosesPath = groupPath("doses") else {
+            throw AppError.notAuthenticated
+        }
+        
+        // Create dose ID based on item, period and date
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day], from: scheduledTime)
+        let doseId = "\(itemId)_\(dateComponents.year ?? 0)\(dateComponents.month ?? 0)\(dateComponents.day ?? 0)_\(period)"
+        
+        let dose = FirestoreDose(
+            id: doseId,
+            itemId: itemId,
+            itemType: itemType,
+            itemName: itemName,
+            period: period,
+            itemDosage: itemDosage,
+            scheduledTime: scheduledTime,
+            isTaken: isTaken,
+            takenAt: isTaken ? Date() : nil,
+            takenBy: isTaken ? currentUserId : nil,
+            takenByName: isTaken ? UIDevice.current.name : nil,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        
+        try await dosesPath.document(dose.id).setData(dose.dictionary, merge: true)
+        print("✅ Saved/updated dose for \(itemName) at \(period)")
+    }
+    
     // MARK: - Sync from Core Data
     
     /// Sync all Core Data items to Firebase group (for migration)
@@ -299,6 +453,7 @@ final class FirebaseGroupDataService: ObservableObject {
     private var medicationListener: ListenerRegistration?
     private var supplementListener: ListenerRegistration?
     private var dietListener: ListenerRegistration?
+    private var doseListener: ListenerRegistration?
     
     /// Start listening to group data changes
     func startListening() {
@@ -358,6 +513,31 @@ final class FirebaseGroupDataService: ObservableObject {
                     userInfo: ["collection": "diets"]
                 )
             }
+        
+        // Listen to doses (for real-time updates when medications are taken)
+        doseListener = db.collection("groups").document(groupId)
+            .collection("doses")
+            .whereField("scheduledTime", isGreaterThanOrEqualTo: Timestamp(date: Calendar.current.startOfDay(for: Date())))
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    AppLogger.main.error("❌ Dose listener error: \(error)")
+                    return
+                }
+                
+                AppLogger.main.info("📱 Doses updated: \(snapshot?.documents.count ?? 0) items")
+                
+                // Update badge count when doses change (e.g., when another caregiver marks as taken)
+                Task {
+                    await BadgeManager.shared.updateBadgeForCurrentPeriod()
+                    AppLogger.main.info("📛 Badge updated due to dose changes")
+                }
+                
+                NotificationCenter.default.post(
+                    name: .groupDataDidChange,
+                    object: nil,
+                    userInfo: ["collection": "doses"]
+                )
+            }
     }
     
     /// Stop listening to group data changes
@@ -365,10 +545,12 @@ final class FirebaseGroupDataService: ObservableObject {
         medicationListener?.remove()
         supplementListener?.remove()
         dietListener?.remove()
+        doseListener?.remove()
         
         medicationListener = nil
         supplementListener = nil
         dietListener = nil
+        doseListener = nil
     }
 }
 

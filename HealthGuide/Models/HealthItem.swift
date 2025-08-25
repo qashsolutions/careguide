@@ -120,13 +120,15 @@ struct ScheduledDose: Identifiable, Codable, Hashable, Sendable {
     let period: TimePeriod
     var isTaken: Bool = false
     var takenAt: Date?
+    let firebaseDoseId: String? // Preserve Firebase document ID for syncing
     
-    init(id: UUID = UUID(), time: Date, period: TimePeriod, isTaken: Bool = false, takenAt: Date? = nil) {
+    init(id: UUID = UUID(), time: Date, period: TimePeriod, isTaken: Bool = false, takenAt: Date? = nil, firebaseDoseId: String? = nil) {
         self.id = id
         self.time = time
         self.period = period
         self.isTaken = isTaken
         self.takenAt = takenAt
+        self.firebaseDoseId = firebaseDoseId
     }
     
     var isPastDue: Bool {

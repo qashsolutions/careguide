@@ -77,6 +77,43 @@ final class CloudTrialManager: ObservableObject {
     
     // MARK: - Public Methods
     
+    /// Sync trial state for group members - inherits admin's trial dates
+    func syncGroupMemberTrial(groupId: String, trialStartDate: Date, trialEndDate: Date) async {
+        AppLogger.main.info("☁️ Syncing group member trial with admin's dates")
+        
+        // Get device and account identifiers
+        let deviceId = await deviceCheckManager.getDeviceIdentifier()
+        let accountId = (try? await getAccountIdentifier()) ?? UUID().uuidString
+        
+        // Create a unified trial state that matches the group admin's trial
+        let groupMemberTrial = UnifiedTrialState(
+            trialId: UUID().uuidString,
+            accountId: accountId,
+            deviceId: deviceId,
+            groupId: groupId,
+            startDate: trialStartDate,
+            expiryDate: trialEndDate,
+            createdDeviceId: deviceId,
+            createdDeviceName: UIDevice.current.name
+        )
+        
+        // Update local state
+        self.trialState = groupMemberTrial
+        
+        // Save to keychain for fast access
+        await saveToLocalKeychain(groupMemberTrial)
+        
+        // Calculate and log the correct day
+        let daysUsed = Calendar.current.dateComponents([.day], from: trialStartDate, to: Date()).day ?? 0
+        AppLogger.main.info("☁️ Group member trial synced: Day \(daysUsed + 1) of 14")
+        AppLogger.main.info("   Trial expires: \(trialEndDate)")
+        
+        // Optionally sync to CloudKit (but not required for group members)
+        Task.detached { [weak self] in
+            try? await self?.syncToCloud(groupMemberTrial)
+        }
+    }
+    
     /// Initialize and check trial status - Optimized with cache-first approach
     func initialize() async throws {
         // FAST PATH: Check local cache first

@@ -8,6 +8,8 @@
 
 import SwiftUI
 import CoreData
+import FirebaseAuth
+import FirebaseFirestore
 
 @available(iOS 18.0, *)
 struct GroupDashboardView: View {
@@ -24,6 +26,19 @@ struct GroupDashboardView: View {
     @State private var memberNames: [String: String] = [:]
     @State private var memberAccessStates: [String: Bool] = [:]
     @State private var copiedInviteCode = false
+    
+    // Join group states for existing users
+    @State private var joinInviteCode = ""
+    @State private var isJoiningGroup = false
+    @State private var joinError: String?
+    @State private var showJoinError = false
+    @FocusState private var isCodeFieldFocused: Bool
+    
+    // Member transition states
+    @State private var showTransitionWarning = false
+    @State private var isTransitioning = false
+    @State private var isEligibleToCreateGroup = true // Default true, will check async
+    @State private var cooldownDaysRemaining = 0
     
     var body: some View {
         NavigationStack {
@@ -76,6 +91,24 @@ struct GroupDashboardView: View {
                 Text("The invite code has been copied to your clipboard")
             }
             .tint(Color.blue)  // Force iOS blue color for alert buttons
+            .alert("Error", isPresented: $showJoinError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(joinError ?? "Failed to join group")
+            }
+            .sheet(isPresented: $showTransitionWarning) {
+                MemberTransitionWarningView(
+                    currentGroupName: firebaseGroups.currentGroup?.name ?? "this group",
+                    onConfirm: {
+                        Task {
+                            await viewModel.performMemberToAdminTransition()
+                        }
+                    },
+                    onCancel: {
+                        showTransitionWarning = false
+                    }
+                )
+            }
             .task {
                 guard !hasLoadedData else {
                     print("🔍 [DEBUG] GroupDashboardView.task - Skipped (already loaded)")
@@ -93,6 +126,14 @@ struct GroupDashboardView: View {
                 if firebaseGroups.currentGroup != nil {
                     await loadGroupMembers()
                     print("🔍 [DEBUG] After loadGroupMembers")
+                    
+                    // Check if user is eligible to create a group (for members)
+                    if let userId = Auth.auth().currentUser?.uid,
+                       let group = firebaseGroups.currentGroup,
+                       !group.adminIds.contains(userId) {
+                        // User is a member, check their eligibility
+                        await checkCreateGroupEligibility()
+                    }
                 }
                 
                 hasLoadedData = true
@@ -107,43 +148,6 @@ struct GroupDashboardView: View {
             }
             .refreshable {
                 print("🔍 [PERF] GroupDashboardView manual refresh triggered")
-                await viewModel.loadGroups()
-            }
-            // COMMENTED OUT: Old implementation causing 100% CPU usage
-            // This was listening to ALL Core Data saves across the entire app
-            /*
-            .onReceive(NotificationCenter.default.publisher(for: .coreDataDidSave)
-                .receive(on: DispatchQueue.main)) { _ in
-                Task {
-                    await viewModel.loadGroups()
-                    
-                    // If no active group, set the first one as active
-                    if activeGroupID.isEmpty, let firstGroup = viewModel.groups.first {
-                        activeGroupID = firstGroup.id?.uuidString ?? ""
-                    }
-                }
-            }
-            */
-            
-            // DISABLED: Even debounced listening can cause energy drain
-            // Only load groups on appear and via pull-to-refresh
-            /*
-            .onReceive(
-                NotificationCenter.default.publisher(for: .groupDataDidChange)
-                    .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
-            ) { _ in
-                Task {
-                    await viewModel.loadGroups()
-                    
-                    // If no active group, set the first one as active
-                    if activeGroupID.isEmpty, let firstGroup = viewModel.groups.first {
-                        activeGroupID = firstGroup.id?.uuidString ?? ""
-                    }
-                }
-            }
-            */
-            // Add pull-to-refresh for immediate manual updates
-            .refreshable {
                 await viewModel.loadGroups()
             }
         }
@@ -190,50 +194,95 @@ struct GroupDashboardView: View {
             
             Spacer()
             
-            // Informational text at bottom
-            VStack(spacing: AppTheme.Spacing.xSmall) {
-                Text("You can add up to two members that will have only view capabilities to help with caregiving tasks.")
-                    .font(.monaco(AppTheme.ElderTypography.footnote))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, AppTheme.Spacing.screenPadding)
-            .padding(.bottom, AppTheme.Spacing.large)
+            // Removed old informational text - now shown in MemberListCard
         }
     }
     
     // Display Firebase group directly when Core Data is empty but Firebase has a group
     private func firebaseGroupView(_ group: FirestoreGroup) -> some View {
-        VStack {
+        let isAdmin = firebaseGroups.userIsAdmin
+        _ = Auth.auth().currentUser?.uid
+        
+        return VStack {
             ScrollView {
                 VStack(spacing: AppTheme.Spacing.medium) {
-                    // Create a temporary CareGroupEntity-like structure for the ActiveGroupCardView
-                    // We'll use Firebase data directly
-                    FirebaseGroupCardView(
-                        firebaseGroup: group,
-                        memberNames: $memberNames,
-                        memberAccessStates: $memberAccessStates,
-                        onCopyCode: { copyInviteCode(group.inviteCode) },
-                        onShareCode: { shareInviteCode(group.inviteCode) },
-                        onMemberNameChange: { memberId, newName in
-                            updateMemberName(memberId: memberId, newName: newName)
-                        },
-                        onMemberAccessToggle: { memberId in
-                            toggleMemberAccess(memberId: memberId)
+                    if isAdmin {
+                        // Admin sees full group management
+                        FirebaseGroupCardView(
+                            firebaseGroup: group,
+                            memberNames: $memberNames,
+                            memberAccessStates: $memberAccessStates,
+                            onCopyCode: { copyInviteCode(group.inviteCode) },
+                            onShareCode: { shareInviteCode(group.inviteCode) },
+                            onMemberNameChange: { memberId, newName in
+                                updateMemberName(memberId: memberId, newName: newName)
+                            },
+                            onMemberAccessToggle: { memberId in
+                                toggleMemberAccess(memberId: memberId)
+                            }
+                        )
+                    } else {
+                        // Members see simplified view - just group name
+                        VStack(spacing: AppTheme.Spacing.large) {
+                            // Group icon and name
+                            VStack(spacing: AppTheme.Spacing.medium) {
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(AppTheme.Colors.successGreen)
+                                
+                                Text(group.name)
+                                    .font(.monaco(AppTheme.ElderTypography.title))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                
+                                Text("You are a member of this care group")
+                                    .font(.monaco(AppTheme.ElderTypography.caption))
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                            }
+                            .padding(AppTheme.Spacing.xxLarge)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.white)
+                            .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
+                            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
                         }
-                    )
+                    }
                 }
                 .padding(AppTheme.Spacing.screenPadding)
             }
             
             Spacer()
             
-            // Informational text at bottom
-            VStack(spacing: AppTheme.Spacing.xSmall) {
-                Text("You can add up to two members that will have only view capabilities to help with caregiving tasks.")
-                    .font(.monaco(AppTheme.ElderTypography.footnote))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
+            // Bottom section
+            VStack(spacing: AppTheme.Spacing.medium) {
+                if isAdmin {
+                    // Admin sees member management info - now shown in MemberListCard
+                    EmptyView()
+                } else {
+                    // Member sees transition option (only if eligible)
+                    if isEligibleToCreateGroup {
+                        Button(action: { showTransitionWarning = true }) {
+                            Text("Want to start your own care group?")
+                                .font(.monaco(AppTheme.ElderTypography.caption))
+                                .foregroundColor(AppTheme.Colors.primaryBlue)
+                                .underline()
+                        }
+                        .disabled(isTransitioning)
+                    } else {
+                        // Show cooldown message
+                        VStack(spacing: 4) {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(AppTheme.Colors.warningOrange)
+                            Text("Group creation available in \(cooldownDaysRemaining) days")
+                                .font(.monaco(AppTheme.ElderTypography.caption))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                            Text("Members must wait 30 days before creating a group")
+                                .font(.monaco(AppTheme.ElderTypography.footnote))
+                                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                }
             }
             .padding(.horizontal, AppTheme.Spacing.screenPadding)
             .padding(.bottom, AppTheme.Spacing.large)
@@ -310,11 +359,54 @@ struct GroupDashboardView: View {
         }
     }
     
+    private func checkCreateGroupEligibility() async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        
+        do {
+            // Get user's transition tracking data
+            let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
+            
+            if let data = userDoc.data() {
+                let transitionCount = data["transitionCount"] as? Int ?? 0
+                let lastTransitionAt = (data["lastTransitionAt"] as? Timestamp)?.dateValue()
+                
+                // Check cooldown (30 days)
+                if let lastTransition = lastTransitionAt {
+                    let daysSinceLastTransition = Calendar.current.dateComponents([.day], from: lastTransition, to: Date()).day ?? 0
+                    if daysSinceLastTransition < 30 {
+                        isEligibleToCreateGroup = false
+                        cooldownDaysRemaining = 30 - daysSinceLastTransition
+                        AppLogger.main.info("⏳ User in cooldown: \(cooldownDaysRemaining) days remaining")
+                    } else {
+                        isEligibleToCreateGroup = true
+                    }
+                } else {
+                    // No previous transition, eligible
+                    isEligibleToCreateGroup = true
+                }
+                
+                // Also check max transitions (3 lifetime)
+                if transitionCount >= 3 {
+                    isEligibleToCreateGroup = false
+                    cooldownDaysRemaining = 999 // Show as permanently restricted
+                    AppLogger.main.info("🚫 User has reached maximum transitions")
+                }
+            } else {
+                // No tracking data, eligible
+                isEligibleToCreateGroup = true
+            }
+        } catch {
+            AppLogger.main.error("Failed to check eligibility: \(error)")
+            // Default to eligible on error (will be checked server-side anyway)
+            isEligibleToCreateGroup = true
+        }
+    }
+    
     private func loadGroupMembers() async {
         print("🔍 [DEBUG] loadGroupMembers - Starting")
-        guard let group = firebaseGroups.currentGroup else { 
+        guard let group = firebaseGroups.currentGroup else {
             print("🔍 [DEBUG] loadGroupMembers - No current group, returning")
-            return 
+            return
         }
         print("🔍 [DEBUG] loadGroupMembers - Current group: \(group.name)")
         
@@ -337,18 +429,135 @@ struct GroupDashboardView: View {
         print("🔍 [DEBUG] loadGroupMembers - Completed")
     }
     
+    // MARK: - Join Group Helpers
+    private func joinCodeDigit(at index: Int) -> String {
+        guard index < joinInviteCode.count else { return "" }
+        let stringIndex = joinInviteCode.index(joinInviteCode.startIndex, offsetBy: index)
+        return String(joinInviteCode[stringIndex])
+    }
+    
+    private func validateJoinCode(_ code: String) {
+        // Allow alphanumeric characters only
+        let filtered = code.uppercased().filter { $0.isLetter || $0.isNumber }
+        joinInviteCode = String(filtered.prefix(6))
+    }
+    
+    private func joinGroupWithCode() {
+        guard joinInviteCode.count == 6 else { return }
+        
+        isJoiningGroup = true
+        
+        Task {
+            do {
+                // Join the group via Firebase
+                _ = try await firebaseGroups.joinGroup(
+                    inviteCode: joinInviteCode,
+                    memberName: UIDevice.current.name
+                )
+                
+                // Clear the code
+                joinInviteCode = ""
+                isCodeFieldFocused = false
+                
+                // Reload to show the new group
+                hasLoadedData = false
+                await viewModel.loadGroups()
+                hasLoadedData = true
+                
+                isJoiningGroup = false
+            } catch {
+                isJoiningGroup = false
+                joinError = error.localizedDescription
+                showJoinError = true
+            }
+        }
+    }
+    
     private var emptyStateView: some View {
         VStack(spacing: AppTheme.Spacing.xxLarge) {
-            Spacer()
+            // Join a Care Group Card at the top
+            VStack(spacing: AppTheme.Spacing.large) {
+                HStack {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 24))
+                        .foregroundColor(AppTheme.Colors.primaryBlue)
+                    
+                    Text("Join a Care Group")
+                        .font(.monaco(AppTheme.ElderTypography.headline))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    
+                    Spacer()
+                }
+                
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+                    Text("Have an invite code?")
+                        .font(.monaco(AppTheme.ElderTypography.caption))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    
+                    HStack(spacing: AppTheme.Spacing.small) {
+                        // 6-digit code input boxes
+                        ForEach(0..<6, id: \.self) { index in
+                            CodeDigitBox(
+                                digit: joinCodeDigit(at: index),
+                                isActive: joinInviteCode.count == index && isCodeFieldFocused
+                            )
+                        }
+                    }
+                    .onTapGesture {
+                        isCodeFieldFocused = true
+                    }
+                    
+                    // Hidden text field for input
+                    TextField("", text: $joinInviteCode)
+                        .keyboardType(.default)
+                        .textInputAutocapitalization(.characters)
+                        .focused($isCodeFieldFocused)
+                        .opacity(0)
+                        .frame(width: 1, height: 1)
+                        .onChange(of: joinInviteCode) { _, newValue in
+                            validateJoinCode(newValue)
+                        }
+                }
+                
+                Button(action: joinGroupWithCode) {
+                    if isJoiningGroup {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Join Group")
+                            .font(.monaco(AppTheme.ElderTypography.body))
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: AppTheme.Dimensions.buttonHeight)
+                .background(joinInviteCode.count == 6 ? AppTheme.Colors.primaryBlue : Color.gray)
+                .foregroundColor(.white)
+                .cornerRadius(AppTheme.Dimensions.buttonCornerRadius)
+                .disabled(joinInviteCode.count != 6 || isJoiningGroup)
+            }
+            .padding(AppTheme.Spacing.large)
+            .background(Color.white)
+            .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            .padding(.horizontal, AppTheme.Spacing.screenPadding)
+            .padding(.top, AppTheme.Spacing.large)
             
-            Image(systemName: "person.3.fill")
-                .font(.system(size: 60))
-                .foregroundColor(AppTheme.Colors.successGreen.opacity(0.5))
+            Text("OR")
+                .font(.monaco(AppTheme.ElderTypography.caption))
+                .foregroundColor(AppTheme.Colors.textSecondary)
             
-            Text("Setting up your care group...")
-                .font(.monaco(AppTheme.ElderTypography.title))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .multilineTextAlignment(.center)
+            // Your personal group info
+            VStack(spacing: AppTheme.Spacing.medium) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(AppTheme.Colors.successGreen.opacity(0.5))
+                
+                Text("Your Personal Care Group")
+                    .font(.monaco(AppTheme.ElderTypography.headline))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+            }
             
             Text("Creating your personal group with invite code")
                 .font(.monaco(AppTheme.ElderTypography.body))
@@ -377,7 +586,145 @@ struct GroupDashboardView: View {
             }
         }
     }
+}
+
+// MARK: - View Model
+@available(iOS 18.0, *)
+@MainActor
+final class GroupDashboardViewModel: ObservableObject {
+    @Published var groups: [CareGroupEntity] = []
+    @Published var isLoading = true
+    @Published var error: AppError?
     
+    // Member transition states
+    @Published var isTransitioning = false
+    @Published var joinError: String?
+    @Published var showJoinError = false
+    
+    private let coreDataManager = CoreDataManager.shared
+    private let firebaseGroups = FirebaseGroupService.shared
+    
+    func loadGroups() async {
+        print("🔍 [DEBUG] GroupDashboardViewModel.loadGroups - Starting")
+        print("🔍 [DEBUG] isLoading before: \(isLoading)")
+        let startTime = Date()
+        isLoading = true
+        print("🔍 [DEBUG] isLoading set to true")
+        
+        // Since we're @MainActor, we don't need to wrap everything
+        let context = PersistenceController.shared.container.viewContext
+        let request = CareGroupEntity.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        
+        do {
+            groups = try context.fetch(request)
+            print("🔍 [DEBUG] Groups fetched: \(groups.count) groups")
+            print("🔍 [DEBUG] Groups: \(groups.map { $0.name ?? "unnamed" })")
+            print("🔍 [PERF] GroupDashboardViewModel.loadGroups - Fetched \(groups.count) groups in \(Date().timeIntervalSince(startTime))s")
+        } catch {
+            self.error = AppError.coreDataFetchFailed
+            print("❌ [DEBUG] Failed to load groups: \(error)")
+        }
+        
+        isLoading = false
+        print("🔍 [DEBUG] isLoading set to false")
+        print("🔍 [DEBUG] Final groups.isEmpty: \(groups.isEmpty)")
+    }
+    
+    // MARK: - Member to Admin Transition
+    func performMemberToAdminTransition() async {
+        isTransitioning = true
+        defer { isTransitioning = false }
+        
+        guard let userId = Auth.auth().currentUser?.uid,
+              let group = firebaseGroups.currentGroup else { return }
+        
+        do {
+            // 1. Check transition eligibility (cooldown and count)
+            let canTransition = try await firebaseGroups.checkTransitionEligibility(userId: userId)
+            if !canTransition {
+                // Show error about cooldown or limit
+                joinError = "You must wait 30 days between transitions or have reached the maximum limit."
+                showJoinError = true
+                return
+            }
+            
+            // 2. Leave current group as member
+            try await firebaseGroups.leaveGroupAsMember(groupId: group.id, userId: userId)
+            
+            // 3. Clear ALL local data (complete wipe)
+            await clearAllLocalData()
+            
+            // 4. Create new personal group as admin with fresh trial
+            try await firebaseGroups.createPersonalGroupAsNewAdmin()
+            
+            // 5. Update transition tracking
+            try await firebaseGroups.updateTransitionTracking(userId: userId)
+            
+            // 6. Reload UI
+            await loadGroups()
+            
+            // 7. Post notification for app-wide refresh
+            NotificationCenter.default.post(name: .firebaseGroupDidChange, object: nil)
+            
+        } catch {
+            joinError = error.localizedDescription
+            showJoinError = true
+        }
+    }
+    
+    private func clearAllLocalData() async {
+        // Complete Core Data wipe
+        let coreDataManager = CoreDataManager.shared
+        
+        // Delete all medications
+        do {
+            let medications = try await coreDataManager.fetchMedications()
+            for med in medications {
+                try await coreDataManager.deleteMedication(med.id)
+            }
+        } catch {
+            print("Failed to clear medications: \(error)")
+        }
+        
+        // Delete all supplements
+        do {
+            let supplements = try await coreDataManager.fetchSupplements()
+            for supp in supplements {
+                try await coreDataManager.deleteSupplement(supp.id)
+            }
+        } catch {
+            print("Failed to clear supplements: \(error)")
+        }
+        
+        // Delete all diet items
+        do {
+            let diets = try await coreDataManager.fetchDietItems()
+            for diet in diets {
+                try await coreDataManager.deleteDiet(diet.id)
+            }
+        } catch {
+            print("Failed to clear diets: \(error)")
+        }
+        
+        // Delete all memos
+        do {
+            let memos = try await coreDataManager.fetchCareMemos()
+            for memo in memos {
+                try await coreDataManager.deleteCareMemo(memo.id)
+            }
+        } catch {
+            print("Failed to clear memos: \(error)")
+        }
+        
+        // Clear Firebase contacts (contacts are managed in Firebase, not Core Data)
+        // They will be cleared when user leaves the group
+        // No need to manually delete as they're tied to group membership
+        
+        // Clear group-related UserDefaults
+        UserDefaults.standard.removeObject(forKey: "currentFirebaseGroupId")
+        UserDefaults.standard.removeObject(forKey: "activeGroupID")
+    }
 }
 
 // MARK: - Active Group Card View (Expanded with Member Management)
@@ -474,8 +821,8 @@ struct ActiveGroupCardView: View {
                         .padding()
                 } else if groupMembers.filter({ $0.userId != firebaseGroups.currentGroup?.createdBy }).isEmpty {
                     // No members yet
-                    Text("No members in the group. You can add up to two members that will have only view capabilities to help with caregiving tasks")
-                        .font(.monaco(AppTheme.ElderTypography.footnote))
+                    Text("No members added yet. Share your invite code to add caregivers.")
+                        .font(.monaco(AppTheme.ElderTypography.body))
                         .foregroundColor(AppTheme.Colors.textSecondary)
                         .padding(AppTheme.Spacing.medium)
                         .frame(maxWidth: .infinity)
@@ -483,7 +830,7 @@ struct ActiveGroupCardView: View {
                         .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
                 } else {
                     // Show members (excluding admin)
-                    ForEach(groupMembers.filter({ $0.userId != firebaseGroups.currentGroup?.createdBy })) { member in
+                    ForEach(groupMembers.filter({ $0.userId != firebaseGroups.currentGroup?.createdBy }), id: \.userId) { member in
                         HStack(spacing: AppTheme.Spacing.medium) {
                             // Member name text field
                             TextField("Member Name", text: Binding(
@@ -540,122 +887,6 @@ struct ActiveGroupCardView: View {
         } catch {
             print("Failed to load members: \(error)")
             isLoadingMembers = false
-        }
-    }
-}
-
-// MARK: - Group Card View
-@available(iOS 18.0, *)
-struct GroupCardView: View {
-    let group: CareGroupEntity
-    let memberCount: Int
-    let isActive: Bool
-    let onTap: () -> Void
-    
-    @State private var showShareView = false
-    
-    @State private var isAdmin: Bool = false
-    
-    private func checkIfAdmin() async {
-        let deviceID = await DeviceCheckManager.shared.getDeviceIdentifier()
-        isAdmin = group.adminUserID?.uuidString == deviceID
-    }
-    
-    var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
-                HStack {
-                    Image(systemName: "person.3.fill")
-                        .font(.system(size: AppTheme.ElderTypography.headline))
-                        .foregroundColor(isActive ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary)
-                    
-                    Spacer()
-                    
-                    if isAdmin {
-                        HStack(spacing: AppTheme.Spacing.medium) {
-                            // Share button with better visual prominence
-                            if isActive && group.inviteCode != nil {
-                                Button(action: { showShareView = true }) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.system(size: 18, weight: .medium))
-                                        Text("Share")
-                                            .font(.monaco(AppTheme.ElderTypography.footnote))
-                                            .fontWeight(.medium)
-                                    }
-                                    .foregroundColor(AppTheme.Colors.primaryBlue)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(AppTheme.Colors.primaryBlue.opacity(0.1))
-                                    .cornerRadius(20)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            
-                            Text("Admin")
-                                .font(.monaco(AppTheme.ElderTypography.caption))
-                                .padding(.horizontal, AppTheme.Spacing.small)
-                                .padding(.vertical, AppTheme.Spacing.xxSmall)
-                                .background(AppTheme.Colors.primaryBlue.opacity(0.1))
-                                .foregroundColor(AppTheme.Colors.primaryBlue)
-                                .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
-                        }
-                    }
-                }
-                
-                Text(group.name ?? "Unknown Group")
-                    .font(.monaco(AppTheme.ElderTypography.headline))
-                    .foregroundColor(isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.textSecondary)
-                
-                if isActive && isAdmin {
-                    if let inviteCode = group.inviteCode {
-                        VStack(alignment: .leading, spacing: AppTheme.Spacing.xxSmall) {
-                            HStack(spacing: AppTheme.Spacing.xSmall) {
-                                Image(systemName: "ticket.fill")
-                                    .font(.system(size: AppTheme.ElderTypography.footnote))
-                                Text("Code: \(inviteCode)")
-                                    .font(.monaco(AppTheme.ElderTypography.footnote))
-                                    .fontWeight(AppTheme.Typography.semibold)
-                            }
-                            .foregroundColor(AppTheme.Colors.primaryBlue)
-                        }
-                        .padding(.vertical, AppTheme.Spacing.xSmall)
-                    }
-                }
-                
-                HStack {
-                    Text("\(memberCount) \(memberCount == 1 ? "member" : "members")")
-                        .font(.monaco(AppTheme.ElderTypography.footnote))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                    
-                    Spacer()
-                    
-                    if !isActive {
-                        Text("Inactive")
-                            .font(.monaco(AppTheme.ElderTypography.caption))
-                            .padding(.horizontal, AppTheme.Spacing.small)
-                            .padding(.vertical, AppTheme.Spacing.xxSmall)
-                            .background(AppTheme.Colors.textSecondary.opacity(0.1))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
-                    }
-                }
-            }
-            .padding(AppTheme.Spacing.large)
-            .background(isActive ? AppTheme.Colors.backgroundSecondary : AppTheme.Colors.backgroundSecondary.opacity(0.5))
-            .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
-                    .stroke(isActive ? Color.clear : AppTheme.Colors.borderLight, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(!isActive)
-        .sheet(isPresented: $showShareView) {
-            ShareInviteView(group: group)
-        }
-        .task {
-            await checkIfAdmin()
         }
     }
 }
@@ -752,11 +983,7 @@ struct FirebaseGroupCardView: View {
                     }
                 }
                 
-                if groupMembers.count < 2 {
-                    Text("\(2 - groupMembers.count) slot(s) available")
-                        .font(.monaco(AppTheme.ElderTypography.footnote))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                }
+                // Removed slot count - will show comprehensive text below
             }
         }
         .padding(AppTheme.Spacing.large)
@@ -765,6 +992,36 @@ struct FirebaseGroupCardView: View {
         .task {
             await loadMembers()
         }
+        
+        // Comprehensive member info text below the card
+        VStack(spacing: AppTheme.Spacing.small) {
+            if groupMembers.isEmpty {
+                Text("You can add a total of two members.")
+                    .font(.monaco(AppTheme.ElderTypography.body))
+                    .fontWeight(.medium)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+            } else if groupMembers.count == 1 {
+                Text("You can add a total of two members. You have added one.")
+                    .font(.monaco(AppTheme.ElderTypography.body))
+                    .fontWeight(.medium)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("You have added two members (maximum reached).")
+                    .font(.monaco(AppTheme.ElderTypography.body))
+                    .fontWeight(.medium)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Text("To disable their access to all data, use the toggle button.")
+                .font(.monaco(AppTheme.ElderTypography.callout))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, AppTheme.Spacing.large)
+        .padding(.top, AppTheme.Spacing.medium)
     }
     
     private func loadMembers() async {
@@ -785,41 +1042,26 @@ struct FirebaseGroupCardView: View {
     }
 }
 
-// MARK: - View Model
+// MARK: - Code Digit Box Component
 @available(iOS 18.0, *)
-@MainActor
-final class GroupDashboardViewModel: ObservableObject {
-    @Published var groups: [CareGroupEntity] = []
-    @Published var isLoading = true
-    @Published var error: AppError?
+struct CodeDigitBox: View {
+    let digit: String
+    let isActive: Bool
     
-    private let coreDataManager = CoreDataManager.shared
-    
-    func loadGroups() async {
-        print("🔍 [DEBUG] GroupDashboardViewModel.loadGroups - Starting")
-        print("🔍 [DEBUG] isLoading before: \(isLoading)")
-        let startTime = Date()
-        isLoading = true
-        print("🔍 [DEBUG] isLoading set to true")
-        
-        // Since we're @MainActor, we don't need to wrap everything
-        let context = PersistenceController.shared.container.viewContext
-        let request = CareGroupEntity.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        
-        do {
-            groups = try context.fetch(request)
-            print("🔍 [DEBUG] Groups fetched: \(groups.count) groups")
-            print("🔍 [DEBUG] Groups: \(groups.map { $0.name ?? "unnamed" })")
-            print("🔍 [PERF] GroupDashboardViewModel.loadGroups - Fetched \(groups.count) groups in \(Date().timeIntervalSince(startTime))s")
-        } catch {
-            self.error = AppError.coreDataFetchFailed
-            print("❌ [DEBUG] Failed to load groups: \(error)")
-        }
-        
-        isLoading = false
-        print("🔍 [DEBUG] isLoading set to false")
-        print("🔍 [DEBUG] Final groups.isEmpty: \(groups.isEmpty)")
+    var body: some View {
+        Text(digit)
+            .font(.monaco(AppTheme.Typography.title))
+            .fontWeight(.semibold)
+            .frame(width: 45, height: 55)
+            .background(Color.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Dimensions.inputCornerRadius)
+                    .stroke(
+                        isActive ? AppTheme.Colors.primaryBlue : Color.gray.opacity(0.3),
+                        lineWidth: isActive ? 2 : 1
+                    )
+            )
+            .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
     }
 }
 

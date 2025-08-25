@@ -415,7 +415,8 @@ extension CoreDataManager {
             takenAt: entity.takenAt,
             isTaken: entity.isTaken,
             period: entity.period ?? "unknown",
-            notes: entity.notes
+            notes: entity.notes,
+            firebaseDoseId: nil  // Local Core Data doses don't have Firebase IDs
         )
     }
 }
@@ -432,6 +433,7 @@ struct DoseRecord: Sendable {
     let isTaken: Bool
     let period: String
     let notes: String?
+    let firebaseDoseId: String? // Preserve Firebase document ID for syncing
 }
 
 @available(iOS 18.0, *)

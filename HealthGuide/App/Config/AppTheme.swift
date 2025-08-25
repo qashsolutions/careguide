@@ -79,6 +79,7 @@ struct AppTheme {
         static let largeTitle: CGFloat = 40      // was 42 (previously 46, originally 34)
         static let title: CGFloat = 32           // was 34 (previously 38, originally 28)
         static let headline: CGFloat = 26        // was 28 (previously 32, originally 24)
+        static let largeBody: CGFloat = 22       // Between headline and body for better visibility
         static let body: CGFloat = 18            // was 20 (previously 24, originally 17)
         static let callout: CGFloat = 16         // was 18 (previously 22, originally 16)
         static let subheadline: CGFloat = 14     // was 16 (previously 20, originally 15)

@@ -52,21 +52,37 @@ final class BadgeManager: ObservableObject {
             // Get current time period
             let currentPeriod = HealthDataProcessor.getCurrentTimePeriod()
             
-            // Fetch all doses for today
-            let allDoses = try await coreDataManager.fetchDosesForDate(Date())
+            // Check if we're in Firebase mode or Core Data mode
+            let unmarkedCount: Int
             
-            // Filter for current period only
-            let currentPeriodDoses = allDoses.filter { dose in
-                // Match period string to current period
-                dose.period.lowercased() == currentPeriod.rawValue.lowercased()
+            if FirebaseGroupService.shared.currentGroup != nil {
+                // Firebase mode - fetch from Firebase
+                let firebaseDoses = try await FirebaseGroupDataService.shared.fetchTodaysDoses()
+                
+                // Filter for current period only and not taken
+                let currentPeriodDoses = firebaseDoses.filter { dose in
+                    dose.period.lowercased() == currentPeriod.rawValue.lowercased() && !dose.isTaken
+                }
+                
+                unmarkedCount = currentPeriodDoses.count
+                print("📛 Badge updated from Firebase for \(currentPeriod.rawValue): \(unmarkedCount) items")
+            } else {
+                // Core Data mode - fetch from Core Data
+                let allDoses = try await coreDataManager.fetchDosesForDate(Date())
+                
+                // Filter for current period only
+                let currentPeriodDoses = allDoses.filter { dose in
+                    // Match period string to current period
+                    dose.period.lowercased() == currentPeriod.rawValue.lowercased()
+                }
+                
+                // Count unmarked items in current period
+                unmarkedCount = currentPeriodDoses.filter { !$0.isTaken }.count
+                print("📛 Badge updated from Core Data for \(currentPeriod.rawValue): \(unmarkedCount) items")
             }
-            
-            // Count unmarked items in current period
-            let unmarkedCount = currentPeriodDoses.filter { !$0.isTaken }.count
             
             // Update badge with the unmarked count
             await updateBadge(unmarkedCount)
-            print("📛 Badge updated for \(currentPeriod.rawValue): \(unmarkedCount) items")
         } catch {
             print("❌ Failed to update badge: \(error)")
             // Clear badge on error

@@ -54,8 +54,10 @@ struct TrialStatusModal: View {
     private var modalIcon: String {
         if isExpired {
             return "lock.fill"
-        } else if isLastTwoDays {
+        } else if daysRemaining <= 2 {
             return "exclamationmark.triangle.fill"
+        } else if daysRemaining <= 4 {
+            return "exclamationmark.circle.fill"
         } else {
             return "gift.fill"
         }
@@ -64,8 +66,10 @@ struct TrialStatusModal: View {
     private var modalIconColor: Color {
         if isExpired {
             return .red
-        } else if isLastTwoDays {
+        } else if daysRemaining <= 2 {
             return .orange
+        } else if daysRemaining <= 4 {
+            return .yellow
         } else {
             return .blue
         }
@@ -75,9 +79,11 @@ struct TrialStatusModal: View {
         if isExpired {
             return "Your 14-day free trial has ended. Subscribe now to continue using HealthGuide with unlimited access."
         } else if daysRemaining == 1 {
-            return "Your free trial expires tomorrow! Subscribe now to ensure uninterrupted access."
+            return "⚠️ Trial expires tomorrow! Export your data now:\n• Documents: Tap (...) → Share\n• Contacts: Screenshot or write down\n• Memos: Save before trial ends"
         } else if daysRemaining == 2 {
-            return "Only 2 days left in your free trial. Subscribe now to keep your health tracking on track."
+            return "Only 2 days left! Remember to export important data:\n• Open each document → Tap (...) → Share"
+        } else if daysRemaining <= 4 {
+            return "4 days left in your trial. After trial ends, you'll need a subscription to access your data.\n\nTo save documents: Open → Tap (...) → Share"
         } else {
             return "You're on day \(daysUsed + 1) of your 14-day free trial. Enjoy unlimited access to all features!"
         }
@@ -270,6 +276,18 @@ struct TrialStatusModal: View {
             )
             .padding(.horizontal)
             .padding(.top, 20)
+            
+            // Privacy badge - reassuring for 60+ caregivers
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.gray)
+                Text("No email or phone required • Fully anonymous")
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 8)
             
             // Subscribe button
             Button(action: {

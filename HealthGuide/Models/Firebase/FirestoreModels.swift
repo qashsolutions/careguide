@@ -49,6 +49,55 @@ struct FirestoreGroup: Codable, Identifiable {
     }
 }
 
+// MARK: - Firestore Dose
+struct FirestoreDose: Codable, Identifiable {
+    let id: String
+    let itemId: String  // ID of medication/supplement/diet
+    let itemType: String  // "medication", "supplement", or "diet"
+    let itemName: String  // Name for display
+    let period: String  // "breakfast", "lunch", or "dinner"
+    let itemDosage: String?  // Dosage or portion size
+    let scheduledTime: Date
+    var isTaken: Bool
+    var takenAt: Date?
+    var takenBy: String?  // userId of who marked it taken
+    var takenByName: String?  // Name of who marked it taken
+    let createdAt: Date
+    var updatedAt: Date
+    
+    var dictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "itemId": itemId,
+            "itemType": itemType,
+            "itemName": itemName,
+            "period": period,
+            "scheduledTime": Timestamp(date: scheduledTime),
+            "isTaken": isTaken,
+            "createdAt": Timestamp(date: createdAt),
+            "updatedAt": Timestamp(date: updatedAt)
+        ]
+        
+        if let itemDosage = itemDosage {
+            dict["itemDosage"] = itemDosage
+        }
+        
+        if let takenAt = takenAt {
+            dict["takenAt"] = Timestamp(date: takenAt)
+        }
+        
+        if let takenBy = takenBy {
+            dict["takenBy"] = takenBy
+        }
+        
+        if let takenByName = takenByName {
+            dict["takenByName"] = takenByName
+        }
+        
+        return dict
+    }
+}
+
 // MARK: - Firestore Member
 struct FirestoreMember: Codable, Identifiable {
     var documentId: String?
@@ -129,6 +178,9 @@ struct FirestoreMedication: Codable, Identifiable {
     let createdAt: Date
     var updatedAt: Date
     var scheduleId: String?
+    // Schedule details
+    var scheduleFrequency: String? // "once", "twice", "threeTimesDaily"
+    var scheduleTimePeriods: [String]? // ["breakfast"], ["breakfast", "dinner"], etc.
     
     var dictionary: [String: Any] {
         var dict: [String: Any] = [
@@ -151,6 +203,8 @@ struct FirestoreMedication: Codable, Identifiable {
         if let refillsRemaining = refillsRemaining { dict["refillsRemaining"] = refillsRemaining }
         if let expirationDate = expirationDate { dict["expirationDate"] = Timestamp(date: expirationDate) }
         if let scheduleId = scheduleId { dict["scheduleId"] = scheduleId }
+        if let scheduleFrequency = scheduleFrequency { dict["scheduleFrequency"] = scheduleFrequency }
+        if let scheduleTimePeriods = scheduleTimePeriods { dict["scheduleTimePeriods"] = scheduleTimePeriods }
         
         return dict
     }
@@ -173,11 +227,30 @@ struct FirestoreMedication: Codable, Identifiable {
         self.createdBy = userId
         self.createdAt = medication.createdAt
         self.updatedAt = medication.updatedAt
+        // Store schedule details
+        self.scheduleFrequency = medication.schedule.frequency.rawValue
+        self.scheduleTimePeriods = medication.schedule.timePeriods.map { $0.rawValue }
     }
     
     @available(iOS 18.0, *)
     func toMedication(with schedule: Schedule? = nil) -> Medication? {
         guard let uuid = UUID(uuidString: id) else { return nil }
+        
+        // Reconstruct schedule from stored data
+        let reconstructedSchedule: Schedule
+        if let scheduleFrequency = scheduleFrequency,
+           let scheduleTimePeriods = scheduleTimePeriods {
+            let frequency = Schedule.Frequency(rawValue: scheduleFrequency) ?? .once
+            let timePeriods = scheduleTimePeriods.compactMap { TimePeriod(rawValue: $0) }
+            reconstructedSchedule = Schedule(
+                frequency: frequency,
+                timePeriods: timePeriods,
+                startDate: Date(),
+                activeDays: Set(Date.generateDatesForNext(7))
+            )
+        } else {
+            reconstructedSchedule = schedule ?? Schedule()
+        }
         
         return Medication(
             id: uuid,
@@ -186,7 +259,7 @@ struct FirestoreMedication: Codable, Identifiable {
             quantity: quantity,
             unit: Medication.DosageUnit(rawValue: unit) ?? .tablet,
             notes: notes,
-            schedule: schedule ?? Schedule(),
+            schedule: reconstructedSchedule,
             isActive: isActive,
             category: category.flatMap { Medication.MedicationCategory(rawValue: $0) },
             prescribedBy: prescribedBy,
@@ -216,6 +289,9 @@ struct FirestoreSupplement: Codable, Identifiable {
     let createdAt: Date
     var updatedAt: Date
     var scheduleId: String?
+    // Schedule details
+    var scheduleFrequency: String?
+    var scheduleTimePeriods: [String]?
     
     var dictionary: [String: Any] {
         var dict: [String: Any] = [
@@ -237,6 +313,8 @@ struct FirestoreSupplement: Codable, Identifiable {
         if let purpose = purpose { dict["purpose"] = purpose }
         if let interactions = interactions { dict["interactions"] = interactions }
         if let scheduleId = scheduleId { dict["scheduleId"] = scheduleId }
+        if let scheduleFrequency = scheduleFrequency { dict["scheduleFrequency"] = scheduleFrequency }
+        if let scheduleTimePeriods = scheduleTimePeriods { dict["scheduleTimePeriods"] = scheduleTimePeriods }
         
         return dict
     }
@@ -258,11 +336,30 @@ struct FirestoreSupplement: Codable, Identifiable {
         self.createdBy = userId
         self.createdAt = supplement.createdAt
         self.updatedAt = supplement.updatedAt
+        // Store schedule details
+        self.scheduleFrequency = supplement.schedule.frequency.rawValue
+        self.scheduleTimePeriods = supplement.schedule.timePeriods.map { $0.rawValue }
     }
     
     @available(iOS 18.0, *)
     func toSupplement(with schedule: Schedule? = nil) -> Supplement? {
         guard let uuid = UUID(uuidString: id) else { return nil }
+        
+        // Reconstruct schedule from stored data
+        let reconstructedSchedule: Schedule
+        if let scheduleFrequency = scheduleFrequency,
+           let scheduleTimePeriods = scheduleTimePeriods {
+            let frequency = Schedule.Frequency(rawValue: scheduleFrequency) ?? .once
+            let timePeriods = scheduleTimePeriods.compactMap { TimePeriod(rawValue: $0) }
+            reconstructedSchedule = Schedule(
+                frequency: frequency,
+                timePeriods: timePeriods,
+                startDate: Date(),
+                activeDays: Set(Date.generateDatesForNext(7))
+            )
+        } else {
+            reconstructedSchedule = schedule ?? Schedule()
+        }
         
         return Supplement(
             id: uuid,
@@ -271,7 +368,7 @@ struct FirestoreSupplement: Codable, Identifiable {
             quantity: quantity,
             unit: Supplement.SupplementUnit(rawValue: unit) ?? .tablet,
             notes: notes,
-            schedule: schedule ?? Schedule(),
+            schedule: reconstructedSchedule,
             isActive: isActive,
             category: category.flatMap { Supplement.SupplementCategory(rawValue: $0) },
             brand: brand,
@@ -298,6 +395,9 @@ struct FirestoreDiet: Codable, Identifiable {
     let createdAt: Date
     var updatedAt: Date
     var scheduleId: String?
+    // Schedule details
+    var scheduleFrequency: String?
+    var scheduleTimePeriods: [String]?
     
     var dictionary: [String: Any] {
         var dict: [String: Any] = [
@@ -317,6 +417,8 @@ struct FirestoreDiet: Codable, Identifiable {
         if let restrictions = restrictions { dict["restrictions"] = restrictions }
         if let mealType = mealType { dict["mealType"] = mealType }
         if let scheduleId = scheduleId { dict["scheduleId"] = scheduleId }
+        if let scheduleFrequency = scheduleFrequency { dict["scheduleFrequency"] = scheduleFrequency }
+        if let scheduleTimePeriods = scheduleTimePeriods { dict["scheduleTimePeriods"] = scheduleTimePeriods }
         
         return dict
     }
@@ -336,11 +438,30 @@ struct FirestoreDiet: Codable, Identifiable {
         self.createdBy = userId
         self.createdAt = diet.createdAt
         self.updatedAt = diet.updatedAt
+        // Store schedule details
+        self.scheduleFrequency = diet.schedule.frequency.rawValue
+        self.scheduleTimePeriods = diet.schedule.timePeriods.map { $0.rawValue }
     }
     
     @available(iOS 18.0, *)
     func toDiet(with schedule: Schedule? = nil) -> Diet? {
         guard let uuid = UUID(uuidString: id) else { return nil }
+        
+        // Reconstruct schedule from stored data
+        let reconstructedSchedule: Schedule
+        if let scheduleFrequency = scheduleFrequency,
+           let scheduleTimePeriods = scheduleTimePeriods {
+            let frequency = Schedule.Frequency(rawValue: scheduleFrequency) ?? .once
+            let timePeriods = scheduleTimePeriods.compactMap { TimePeriod(rawValue: $0) }
+            reconstructedSchedule = Schedule(
+                frequency: frequency,
+                timePeriods: timePeriods,
+                startDate: Date(),
+                activeDays: Set(Date.generateDatesForNext(7))
+            )
+        } else {
+            reconstructedSchedule = schedule ?? Schedule()
+        }
         
         let restrictionSet = Set(restrictions?.compactMap { Diet.DietaryRestriction(rawValue: $0) } ?? [])
         
@@ -349,7 +470,7 @@ struct FirestoreDiet: Codable, Identifiable {
             name: name,
             portion: portion,
             notes: notes,
-            schedule: schedule ?? Schedule(),
+            schedule: reconstructedSchedule,
             isActive: isActive,
             category: category.flatMap { Diet.DietCategory(rawValue: $0) },
             calories: calories,
@@ -418,44 +539,6 @@ struct FirestoreSchedule: Codable, Identifiable {
     }
 }
 
-// MARK: - Firestore Dose
-struct FirestoreDose: Codable, Identifiable {
-    var documentId: String?
-    let id: String
-    let groupId: String
-    var medicationId: String?
-    var supplementId: String?
-    var dietId: String?
-    var scheduledTime: Date
-    var period: String
-    var isTaken: Bool
-    var takenAt: Date?
-    var notes: String?
-    let createdBy: String
-    let createdAt: Date
-    var updatedAt: Date
-    
-    var dictionary: [String: Any] {
-        var dict: [String: Any] = [
-            "id": id,
-            "groupId": groupId,
-            "scheduledTime": Timestamp(date: scheduledTime),
-            "period": period,
-            "isTaken": isTaken,
-            "createdBy": createdBy,
-            "createdAt": Timestamp(date: createdAt),
-            "updatedAt": Timestamp(date: updatedAt)
-        ]
-        
-        if let medicationId = medicationId { dict["medicationId"] = medicationId }
-        if let supplementId = supplementId { dict["supplementId"] = supplementId }
-        if let dietId = dietId { dict["dietId"] = dietId }
-        if let takenAt = takenAt { dict["takenAt"] = Timestamp(date: takenAt) }
-        if let notes = notes { dict["notes"] = notes }
-        
-        return dict
-    }
-}
 
 // MARK: - Firestore Contact
 struct FirestoreContact: Codable, Identifiable {
@@ -686,6 +769,8 @@ extension FirestoreMedication {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.scheduleId = data["scheduleId"] as? String
+        self.scheduleFrequency = data["scheduleFrequency"] as? String
+        self.scheduleTimePeriods = data["scheduleTimePeriods"] as? [String]
     }
 }
 
@@ -723,6 +808,8 @@ extension FirestoreSupplement {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.scheduleId = data["scheduleId"] as? String
+        self.scheduleFrequency = data["scheduleFrequency"] as? String
+        self.scheduleTimePeriods = data["scheduleTimePeriods"] as? [String]
     }
 }
 
@@ -756,6 +843,8 @@ extension FirestoreDiet {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.scheduleId = data["scheduleId"] as? String
+        self.scheduleFrequency = data["scheduleFrequency"] as? String
+        self.scheduleTimePeriods = data["scheduleTimePeriods"] as? [String]
     }
 }
 
@@ -764,28 +853,28 @@ extension FirestoreDose {
         guard let data = document.data() else { return nil }
         
         guard let id = data["id"] as? String,
-              let groupId = data["groupId"] as? String,
-              let scheduledTime = (data["scheduledTime"] as? Timestamp)?.dateValue(),
+              let itemId = data["itemId"] as? String,
+              let itemType = data["itemType"] as? String,
+              let itemName = data["itemName"] as? String,
               let period = data["period"] as? String,
+              let scheduledTime = (data["scheduledTime"] as? Timestamp)?.dateValue(),
               let isTaken = data["isTaken"] as? Bool,
-              let createdBy = data["createdBy"] as? String,
               let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
               let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() else {
             return nil
         }
         
-        self.documentId = document.documentID
         self.id = id
-        self.groupId = groupId
-        self.medicationId = data["medicationId"] as? String
-        self.supplementId = data["supplementId"] as? String
-        self.dietId = data["dietId"] as? String
-        self.scheduledTime = scheduledTime
+        self.itemId = itemId
+        self.itemType = itemType
+        self.itemName = itemName
         self.period = period
+        self.itemDosage = data["itemDosage"] as? String
+        self.scheduledTime = scheduledTime
         self.isTaken = isTaken
         self.takenAt = (data["takenAt"] as? Timestamp)?.dateValue()
-        self.notes = data["notes"] as? String
-        self.createdBy = createdBy
+        self.takenBy = data["takenBy"] as? String
+        self.takenByName = data["takenByName"] as? String
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

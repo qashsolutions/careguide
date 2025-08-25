@@ -190,28 +190,71 @@ actor HealthDataProcessor {
     ///   - itemId: ID of the health item
     ///   - doseId: ID of the specific dose
     /// - Returns: Updated processed health data
-    func markDoseTakenAndRefresh(itemId: UUID, doseId: UUID) async throws -> ProcessedHealthData {
-        // First, determine the type of item to call the correct method
-        // Try to find the item in our current data
-        async let medications = coreDataManager.fetchMedications()
-        async let supplements = coreDataManager.fetchSupplements()
-        async let dietItems = coreDataManager.fetchDietItems()
-        
-        let (medicationList, supplementList, dietItemList) = try await (medications, supplements, dietItems)
-        
-        // Find which type this item belongs to and mark the dose
-        if medicationList.contains(where: { $0.id == itemId }) {
-            try await coreDataManager.markDoseTaken(forMedicationId: itemId, doseId: doseId)
-        } else if supplementList.contains(where: { $0.id == itemId }) {
-            try await coreDataManager.markDoseTaken(forSupplementId: itemId, doseId: doseId)
-        } else if dietItemList.contains(where: { $0.id == itemId }) {
-            try await coreDataManager.markDoseTaken(forDietId: itemId, doseId: doseId)
+    func markDoseTakenAndRefresh(itemId: UUID, doseId: UUID, firebaseDoseId: String? = nil) async throws -> ProcessedHealthData {
+        // Check if we're in Firebase mode
+        if await FirebaseGroupService.shared.currentGroup != nil {
+            // Sync with Firebase - use the Firebase dose ID if available
+            let itemName = await getItemName(for: itemId)
+            let doseIdToUse = firebaseDoseId ?? doseId.uuidString
+            
+            print("🔥 Marking dose as taken in Firebase - Item: \(itemName), DoseId: \(doseIdToUse)")
+            try await FirebaseGroupDataService.shared.markDoseTaken(
+                doseId: doseIdToUse,
+                itemName: itemName
+            )
+            print("✅ Dose marked as taken in Firebase")
+            
+            // Invalidate cache to force refresh from Firebase
+            invalidateCache()
+            
+            // Wait a moment for Firebase to propagate the change
+            try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
         } else {
-            throw AppError.coreDataFetchFailed
+            // Local Core Data mode
+            // Try to find the item in our current data
+            async let medications = coreDataManager.fetchMedications()
+            async let supplements = coreDataManager.fetchSupplements()
+            async let dietItems = coreDataManager.fetchDietItems()
+            
+            let (medicationList, supplementList, dietItemList) = try await (medications, supplements, dietItems)
+            
+            // Find which type this item belongs to and mark the dose
+            if medicationList.contains(where: { $0.id == itemId }) {
+                try await coreDataManager.markDoseTaken(forMedicationId: itemId, doseId: doseId)
+            } else if supplementList.contains(where: { $0.id == itemId }) {
+                try await coreDataManager.markDoseTaken(forSupplementId: itemId, doseId: doseId)
+            } else if dietItemList.contains(where: { $0.id == itemId }) {
+                try await coreDataManager.markDoseTaken(forDietId: itemId, doseId: doseId)
+            } else {
+                throw AppError.coreDataFetchFailed
+            }
         }
         
-        // Return refreshed data to update UI
-        return try await processHealthDataForToday()
+        // Force refresh to get updated data
+        return try await getHealthData(forceRefresh: true)
+    }
+    
+    /// Helper to get item name for Firebase sync
+    private func getItemName(for itemId: UUID) async -> String {
+        // Try medications first
+        if let medications = try? await coreDataManager.fetchMedications(),
+           let med = medications.first(where: { $0.id == itemId }) {
+            return med.name
+        }
+        
+        // Try supplements
+        if let supplements = try? await coreDataManager.fetchSupplements(),
+           let sup = supplements.first(where: { $0.id == itemId }) {
+            return sup.name
+        }
+        
+        // Try diet items
+        if let diets = try? await coreDataManager.fetchDietItems(),
+           let diet = diets.first(where: { $0.id == itemId }) {
+            return diet.name
+        }
+        
+        return "Unknown Item"
     }
     
     // MARK: - Private Processing Methods
@@ -225,7 +268,8 @@ actor HealthDataProcessor {
             time: record.scheduledTime,
             period: period,
             isTaken: record.isTaken,
-            takenAt: record.takenAt
+            takenAt: record.takenAt,
+            firebaseDoseId: record.firebaseDoseId  // Pass through the Firebase document ID
         )
     }
     
@@ -271,7 +315,7 @@ extension HealthDataProcessor {
         
         // Extended time windows to match actual usage patterns:
         // Breakfast: 6 AM - 11 AM (5 hours)
-        // Lunch: 12 PM - 3 PM (3 hours)  
+        // Lunch: 12 PM - 3 PM (3 hours)
         // Dinner: 5 PM - 8 PM (3 hours)
         
         switch hour {
@@ -315,89 +359,206 @@ extension HealthDataProcessor {
         
         let firestoreDiets = try await FirebaseGroupDataService.shared.fetchAllDiets()
         
+        // Fetch today's doses from Firebase
+        let firestoreDoses = try await FirebaseGroupDataService.shared.fetchTodaysDoses()
+        
         // Convert Firestore models to local models
+        // The schedule is now reconstructed from the stored data in toMedication/toSupplement
         let medications = firestoreMeds.compactMap { firestoreMed in
-            // Create a schedule based on the stored data
-            // In production, you'd fetch the actual schedule from Firebase too
-            let schedule = Schedule(
-                frequency: .threeTimesDaily,
-                timePeriods: [.breakfast, .lunch, .dinner],
-                startDate: Date(),
-                activeDays: Set(Date.generateDatesForNext(7))
-            )
-            return firestoreMed.toMedication(with: schedule)
+            return firestoreMed.toMedication()
         }
         
         let supplements = firestoreSups.compactMap { firestoreSup in
-            let schedule = Schedule(
-                frequency: .once,
-                timePeriods: [.breakfast],
-                startDate: Date(),
-                activeDays: Set(Date.generateDatesForNext(7))
-            )
-            return firestoreSup.toSupplement(with: schedule)
+            return firestoreSup.toSupplement()
         }
         
         let diets = firestoreDiets.compactMap { firestoreDiet in
-            let schedule = Schedule(
-                frequency: .threeTimesDaily,
-                timePeriods: [.breakfast, .lunch, .dinner],
-                startDate: Date(),
-                activeDays: Set(Date.generateDatesForNext(7))
-            )
-            return firestoreDiet.toDiet(with: schedule)
+            return firestoreDiet.toDiet()
         }
         
-        // For now, create dose records based on schedules
-        // In production, these would be synced to Firebase too
+        // Convert Firebase doses to DoseRecords
         var doseRecords: [DoseRecord] = []
-        let today = Date()
         
+        // First, add all fetched doses from Firebase
+        for firestoreDose in firestoreDoses {
+            // Use the period from Firebase (it's already stored correctly)
+            let doseRecord = DoseRecord(
+                id: UUID(uuidString: firestoreDose.id) ?? UUID(),
+                itemId: UUID(uuidString: firestoreDose.itemId) ?? UUID(),
+                itemType: firestoreDose.itemType,
+                scheduledTime: firestoreDose.scheduledTime,
+                takenAt: firestoreDose.takenAt,
+                isTaken: firestoreDose.isTaken,
+                period: firestoreDose.period,  // Use the period from Firebase
+                notes: firestoreDose.takenByName,
+                firebaseDoseId: firestoreDose.id  // Preserve the original Firebase document ID
+            )
+            doseRecords.append(doseRecord)
+        }
+        
+        // Create doses for any medications that don't have doses yet
+        let today = Date()
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: today)
+        
+        // Create doses ONLY if they don't exist in Firebase already
         for medication in medications {
             for period in medication.schedule.timePeriods {
-                let dose = DoseRecord(
-                    id: UUID(),
-                    itemId: medication.id,
-                    itemType: "medication",
-                    scheduledTime: today,
-                    takenAt: nil,
-                    isTaken: false,
-                    period: period.rawValue,
-                    notes: nil
-                )
-                doseRecords.append(dose)
+                // Check if dose already exists for this item and period (case-insensitive)
+                let existingDose = doseRecords.first { dose in
+                    dose.itemId == medication.id && dose.period.lowercased() == period.rawValue.lowercased()
+                }
+                
+                if existingDose == nil {
+                        // Create scheduled time based on period
+                        let scheduledHour: Int
+                        switch period {
+                        case .breakfast: scheduledHour = 8
+                        case .lunch: scheduledHour = 13
+                        case .dinner: scheduledHour = 18
+                        default: scheduledHour = 8
+                        }
+                        
+                        let scheduledTime = calendar.date(byAdding: .hour, value: scheduledHour, to: startOfDay) ?? today
+                        
+                        // Create dose in Firebase ONLY once
+                        // Use the period in the dose ID to prevent duplicates
+                        let doseId = "\(medication.id.uuidString)_\(calendar.dateComponents([.year, .month, .day], from: today).year ?? 0)\(calendar.dateComponents([.year, .month, .day], from: today).month ?? 0)\(calendar.dateComponents([.year, .month, .day], from: today).day ?? 0)_\(period.rawValue)"
+                        
+                        let dose = DoseRecord(
+                            id: UUID(uuidString: doseId) ?? UUID(),
+                            itemId: medication.id,
+                            itemType: "medication",
+                            scheduledTime: scheduledTime,
+                            takenAt: nil,
+                            isTaken: false,
+                            period: period.rawValue,
+                            notes: nil,
+                            firebaseDoseId: doseId  // Use the same ID for Firebase
+                        )
+                        doseRecords.append(dose)
+                        
+                        // Create in Firebase immediately (await to ensure it's created)
+                        do {
+                            try await FirebaseGroupDataService.shared.saveOrUpdateDose(
+                                itemId: medication.id.uuidString,
+                                itemName: medication.name,
+                                itemType: "medication",
+                                period: period.rawValue,
+                                itemDosage: medication.dosage,
+                                scheduledTime: scheduledTime,
+                                isTaken: false
+                            )
+                            print("✅ Created dose in Firebase for \(medication.name) - \(period.rawValue)")
+                        } catch {
+                            print("⚠️ Failed to create dose in Firebase: \(error)")
+                        }
+                }
             }
         }
         
         for supplement in supplements {
             for period in supplement.schedule.timePeriods {
-                let dose = DoseRecord(
-                    id: UUID(),
-                    itemId: supplement.id,
-                    itemType: "supplement",
-                    scheduledTime: today,
-                    takenAt: nil,
-                    isTaken: false,
-                    period: period.rawValue,
-                    notes: nil
-                )
-                doseRecords.append(dose)
+                let existingDose = doseRecords.first { dose in
+                    dose.itemId == supplement.id && dose.period.lowercased() == period.rawValue.lowercased()
+                }
+                
+                if existingDose == nil {
+                        let scheduledHour: Int
+                        switch period {
+                        case .breakfast: scheduledHour = 8
+                        case .lunch: scheduledHour = 13
+                        case .dinner: scheduledHour = 18
+                        default: scheduledHour = 8
+                        }
+                        
+                        let scheduledTime = calendar.date(byAdding: .hour, value: scheduledHour, to: startOfDay) ?? today
+                        
+                        // Use the period in the dose ID to prevent duplicates
+                        let doseId = "\(supplement.id.uuidString)_\(calendar.dateComponents([.year, .month, .day], from: today).year ?? 0)\(calendar.dateComponents([.year, .month, .day], from: today).month ?? 0)\(calendar.dateComponents([.year, .month, .day], from: today).day ?? 0)_\(period.rawValue)"
+                        
+                        let dose = DoseRecord(
+                            id: UUID(uuidString: doseId) ?? UUID(),
+                            itemId: supplement.id,
+                            itemType: "supplement",
+                            scheduledTime: scheduledTime,
+                            takenAt: nil,
+                            isTaken: false,
+                            period: period.rawValue,
+                            notes: nil,
+                            firebaseDoseId: doseId  // Use the same ID for Firebase
+                        )
+                        doseRecords.append(dose)
+                        
+                        // Create in Firebase immediately (await to ensure it's created)
+                        do {
+                            try await FirebaseGroupDataService.shared.saveOrUpdateDose(
+                                itemId: supplement.id.uuidString,
+                                itemName: supplement.name,
+                                itemType: "supplement",
+                                period: period.rawValue,
+                                itemDosage: supplement.dosage,
+                                scheduledTime: scheduledTime,
+                                isTaken: false
+                            )
+                            print("✅ Created dose in Firebase for \(supplement.name) - \(period.rawValue)")
+                        } catch {
+                            print("⚠️ Failed to create dose in Firebase: \(error)")
+                        }
+                }
             }
         }
         
         for diet in diets {
             for period in diet.schedule.timePeriods {
-                let dose = DoseRecord(
-                    id: UUID(),
-                    itemId: diet.id,
-                    itemType: "diet",
-                    scheduledTime: today,
-                    takenAt: nil,
-                    isTaken: false,
-                    period: period.rawValue,
-                    notes: nil
-                )
-                doseRecords.append(dose)
+                let existingDose = doseRecords.first { dose in
+                    dose.itemId == diet.id && dose.period.lowercased() == period.rawValue.lowercased()
+                }
+                
+                if existingDose == nil {
+                    // Create scheduled time based on period
+                    let scheduledHour: Int
+                    switch period {
+                    case .breakfast: scheduledHour = 8
+                    case .lunch: scheduledHour = 13
+                    case .dinner: scheduledHour = 18
+                    default: scheduledHour = 8
+                    }
+                    
+                    let scheduledTime = calendar.date(byAdding: .hour, value: scheduledHour, to: startOfDay) ?? today
+                    
+                    // Use the period in the dose ID to prevent duplicates
+                    let doseId = "\(diet.id.uuidString)_\(calendar.dateComponents([.year, .month, .day], from: today).year ?? 0)\(calendar.dateComponents([.year, .month, .day], from: today).month ?? 0)\(calendar.dateComponents([.year, .month, .day], from: today).day ?? 0)_\(period.rawValue)"
+                    
+                    let dose = DoseRecord(
+                        id: UUID(uuidString: doseId) ?? UUID(),
+                        itemId: diet.id,
+                        itemType: "diet",
+                        scheduledTime: scheduledTime,
+                        takenAt: nil,
+                        isTaken: false,
+                        period: period.rawValue,
+                        notes: nil,
+                        firebaseDoseId: doseId  // Use the same ID for Firebase
+                    )
+                    doseRecords.append(dose)
+                    
+                    // Create in Firebase immediately (await to ensure it's created)
+                    do {
+                        try await FirebaseGroupDataService.shared.saveOrUpdateDose(
+                            itemId: diet.id.uuidString,
+                            itemName: diet.name,
+                            itemType: "diet",
+                            period: period.rawValue,
+                            itemDosage: nil,  // Diet items don't have dosage
+                            scheduledTime: scheduledTime,
+                            isTaken: false
+                        )
+                        print("✅ Created dose in Firebase for \(diet.name) - \(period.rawValue)")
+                    } catch {
+                        print("⚠️ Failed to create dose in Firebase: \(error)")
+                    }
+                }
             }
         }
         
@@ -406,3 +567,4 @@ extension HealthDataProcessor {
         return (medications, supplements, diets, doseRecords)
     }
 }
+

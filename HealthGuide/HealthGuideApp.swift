@@ -304,9 +304,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         AppLogger.main.info("App became active")
         
-        // Don't update badge when app becomes active
-        // Badge should only update when medications are marked as taken
-        // This preserves the notification badge count
+        // Start badge updates and update for current period
+        Task {
+            BadgeManager.shared.startUpdates()
+            await BadgeManager.shared.updateBadgeForCurrentPeriod()
+            
+            // Also schedule notifications if they haven't been scheduled today
+            await MedicationNotificationScheduler.shared.scheduleDailyNotifications()
+        }
     }
     
     /// Handle app entering background - pause expensive operations

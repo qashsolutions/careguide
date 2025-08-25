@@ -15,7 +15,7 @@ struct MyHealthDashboardView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var viewModel = MyHealthDashboardViewModel()
     @StateObject private var groupService = FirebaseGroupService.shared
-    @StateObject private var serviceManager = FirebaseServiceManager.shared
+    @StateObject private var groupDataService = FirebaseGroupDataService.shared
     private let dataProcessor = HealthDataProcessor.shared
     @State private var selectedPeriods: [TimePeriod] = [.breakfast]
     @State private var showAddItem = false
@@ -27,6 +27,9 @@ struct MyHealthDashboardView: View {
     @State private var lastGroupId: String? = nil
     @State private var isLoadingData = false
     @State private var refreshTimer: Timer? = nil
+    @State private var doseListenerRegistration: Any? = nil
+    @State private var selectedMedication: Medication? = nil
+    @State private var showMedicationDetail = false
     
     // Use AppStorage to persist last refresh time across app launches
     @AppStorage("lastHealthDataRefresh") private var lastRefreshTimestamp: Double = 0
@@ -131,6 +134,11 @@ struct MyHealthDashboardView: View {
             } message: {
                 Text("Contact your group admin to make changes")
             }
+            .sheet(isPresented: $showMedicationDetail) {
+                if let medication = selectedMedication {
+                    MedicationDetailView(medication: medication)
+                }
+            }
             .tint(Color.blue)  // Force blue tint for all interactive elements
         }
     }
@@ -154,14 +162,8 @@ struct MyHealthDashboardView: View {
     }
     
     private var dashboardContent: some View {
-        ScrollView {
-            VStack(spacing: AppTheme.Spacing.medium) {
-                // Show all time periods with their medications
-                allTimePeriodsView
-                    .padding(.horizontal, AppTheme.Spacing.screenPadding)
-                    .padding(.vertical, AppTheme.Spacing.medium)
-            }
-        }
+        // List now handles scrolling, no need for ScrollView
+        allTimePeriodsView
     }
     
     private var periodSelectorSection: some View {
@@ -236,12 +238,47 @@ struct MyHealthDashboardView: View {
         
         // Setup periodic refresh timer (every 3600 seconds)
         setupRefreshTimer()
+        
+        // Setup real-time listener for dose updates when in a group
+        if groupService.currentGroup != nil {
+            setupDoseListener()
+        }
     }
     
     private func handleViewDisappear() {
         // Clean up timer when view disappears
         refreshTimer?.invalidate()
         refreshTimer = nil
+        
+        // Clean up dose listener
+        cleanupDoseListener()
+    }
+    
+    private func setupDoseListener() {
+        guard let groupId = groupService.currentGroup?.id else { return }
+        
+        print("🔊 Setting up real-time dose listener for group: \(groupId)")
+        
+        // Listen to dose changes in Firebase
+        NotificationCenter.default.addObserver(
+            forName: .groupDataDidChange,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let userInfo = notification.userInfo,
+               let collection = userInfo["collection"] as? String,
+               collection == "doses" {
+                print("🔄 Dose data changed in Firebase - refreshing view")
+                Task {
+                    await self.viewModel.loadData(forceRefresh: true)
+                }
+            }
+        }
+    }
+    
+    private func cleanupDoseListener() {
+        // Remove notification observer
+        NotificationCenter.default.removeObserver(self, name: .groupDataDidChange, object: nil)
     }
     
     private func handleGroupChange(oldValue: String?, newValue: String?) {
@@ -259,14 +296,117 @@ struct MyHealthDashboardView: View {
     }
     
     private var allTimePeriodsView: some View {
-        VStack(spacing: AppTheme.Spacing.large) {
-            // Show each time period with its medications
-            ForEach(TimePeriod.allCases.filter { $0 != .custom && $0 != .bedtime }, id: \.self) { period in
-                timePeriodSection(for: period)
+        ScrollView {
+            VStack(spacing: 16) {
+                ForEach(TimePeriod.allCases.filter { $0 != .custom && $0 != .bedtime }, id: \.self) { period in
+                    timePeriodCard(for: period)
+                }
             }
+            .padding()
         }
+        .background(Color(UIColor.systemGroupedBackground))
     }
     
+    
+    private func timePeriodCard(for period: TimePeriod) -> some View {
+        let items = viewModel.itemsForPeriod(period)
+        let isCurrentPeriod = shouldHighlightPeriod(period)
+        
+        return VStack(spacing: 0) {
+            // Header
+            HStack {
+                Label {
+                    Text(period.displayName)
+                        .font(.monaco(AppTheme.ElderTypography.body))
+                        .fontWeight(isCurrentPeriod ? .bold : .regular)
+                } icon: {
+                    Image(systemName: period.iconName.isEmpty ? "clock" : period.iconName)
+                        .font(.system(size: 20))
+                }
+                .foregroundColor(isCurrentPeriod ? AppTheme.Colors.primaryBlue : AppTheme.Colors.textPrimary)
+                
+                Spacer()
+                
+                if isCurrentPeriod {
+                    Text("NOW")
+                        .font(.monaco(AppTheme.ElderTypography.caption))
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.Colors.primaryBlue)
+                        )
+                }
+                
+                if !items.isEmpty {
+                    Text("\(items.count)")
+                        .font(.monaco(AppTheme.ElderTypography.caption))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.gray.opacity(0.2))
+                        )
+                }
+            }
+            .padding()
+            .background(isCurrentPeriod ? AppTheme.Colors.primaryBlue.opacity(0.05) : Color(UIColor.secondarySystemGroupedBackground))
+            
+            Divider()
+            
+            // Content
+            if items.isEmpty {
+                Text("No items scheduled")
+                    .font(.monaco(AppTheme.ElderTypography.footnote))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .italic()
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                List {
+                    ForEach(Array(items.enumerated()), id: \.offset) { index, itemData in
+                        medicationRow(itemData: itemData, period: period)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(index == items.count - 1 ? .hidden : .visible)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                // Only show delete if item is NOT taken and user has permission
+                                let isTaken = itemData.dose?.isTaken ?? false
+                                if !isTaken && groupService.userHasWritePermission {
+                                    Button(role: .destructive) {
+                                        Task {
+                                            if let medication = itemData.item as? Medication {
+                                                await deleteMedication(medication)
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                            }
+                            .onTapGesture {
+                                if let medication = itemData.item as? Medication {
+                                    selectedMedication = medication
+                                    showMedicationDetail = true
+                                }
+                            }
+                    }
+                }
+                .listStyle(.plain)
+                .frame(height: CGFloat(items.count * 80)) // Approximate height per row
+                .scrollDisabled(true)
+            }
+        }
+        .background(Color.white)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isCurrentPeriod ? AppTheme.Colors.primaryBlue : Color.clear, lineWidth: 2)
+        )
+        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+    }
     
     private func shouldHighlightPeriod(_ period: TimePeriod) -> Bool {
         // Use the same logic as HealthDataProcessor.getCurrentTimePeriod()
@@ -275,98 +415,40 @@ struct MyHealthDashboardView: View {
         return period == currentPeriod
     }
     
-    private func timePeriodSection(for period: TimePeriod) -> some View {
-        let items = viewModel.itemsForPeriod(period)
-        let isCurrentPeriod = period == viewModel.currentPeriod
-        let shouldHighlight = shouldHighlightPeriod(period)
-        
-        return VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
-            // Period header
-            HStack {
-                Label {
-                    Text(period.displayName)
-                        .font(.monaco(AppTheme.ElderTypography.body))
-                        .fontWeight(isCurrentPeriod ? .semibold : .regular)
-                } icon: {
-                    Image(systemName: period.iconName.isEmpty ? "clock" : period.iconName)
-                        .font(.system(size: 20))
-                }
-                .foregroundColor(isCurrentPeriod ? Color.blue : AppTheme.Colors.textPrimary)
-                
-                Spacer()
-                
-                if !items.isEmpty {
-                    Text("\(items.count)")
-                        .font(.monaco(AppTheme.ElderTypography.caption))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(isCurrentPeriod ? Color.blue : Color.gray)
-                        )
-                }
-            }
-            .padding(.horizontal, AppTheme.Spacing.medium)
-            .padding(.vertical, AppTheme.Spacing.small)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Dimensions.buttonCornerRadius)
-                    .fill(isCurrentPeriod ? Color.blue.opacity(0.15) : Color.gray.opacity(0.1))
-            )
-            
-            // Medications list
-            if items.isEmpty {
-                Text("No items scheduled")
-                    .font(.monaco(AppTheme.ElderTypography.footnote))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .italic()
-                    .padding(.leading, AppTheme.Spacing.medium)
-            } else {
-                VStack(spacing: AppTheme.Spacing.small) {
-                    ForEach(items, id: \.item.id) { itemData in
-                        medicationRow(itemData: itemData, period: period)
-                    }
-                }
-            }
-        }
-        .padding(AppTheme.Spacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
-                .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
-        )
-        .overlay(
-            shouldHighlight ? 
-            RoundedRectangle(cornerRadius: AppTheme.Dimensions.cardCornerRadius)
-                .stroke(AppTheme.Colors.primaryBlue, lineWidth: 2) : nil
-        )
-    }
     
     private func medicationRow(itemData: (item: any HealthItem, dose: ScheduledDose?), period: TimePeriod) -> some View {
-        HStack(spacing: AppTheme.Spacing.medium) {
+        let isTaken = itemData.dose?.isTaken == true
+        
+        return HStack(spacing: AppTheme.Spacing.medium) {
             // Icon (with fallback for empty names)
             Image(systemName: itemData.item.itemType.iconName.isEmpty ? "questionmark.circle" : itemData.item.itemType.iconName)
                 .font(.system(size: 24))
-                .foregroundColor(itemData.item.itemType.color)
+                .foregroundColor(isTaken ? Color.gray : itemData.item.itemType.color)
                 .frame(width: 36)
             
             // Name and dosage
             VStack(alignment: .leading, spacing: 2) {
                 Text(itemData.item.name)
                     .font(.monaco(AppTheme.ElderTypography.medicationName))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .foregroundColor(isTaken ? Color.gray : AppTheme.Colors.textPrimary)
+                    .strikethrough(isTaken)
                 
                 if let medication = itemData.item as? Medication {
                     Text(medication.dosage)
                         .font(.monaco(AppTheme.ElderTypography.medicationDose))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .foregroundColor(isTaken ? Color.gray.opacity(0.7) : AppTheme.Colors.textSecondary)
                 }
             }
             
             Spacer()
             
-            // Mark taken button (disabled for read-only users)
+            // Mark taken button (disabled for read-only users or already taken)
             Button(action: {
+                // Don't allow marking if already taken
+                if isTaken {
+                    return
+                }
+                
                 // Set visual feedback
                 tappedItemId = itemData.item.id
                 
@@ -386,21 +468,22 @@ struct MyHealthDashboardView: View {
                 // Show confirmation dialog
                 showTakeConfirmation = true
             }) {
-                Image(systemName: itemData.dose?.isTaken == true ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 32))
                     .foregroundColor(tappedItemId == itemData.item.id ? Color.blue : 
-                                   (itemData.dose?.isTaken == true ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary))
+                                   (isTaken ? AppTheme.Colors.successGreen : AppTheme.Colors.textSecondary))
                     .scaleEffect(tappedItemId == itemData.item.id ? 1.2 : 1.0)
                     .animation(.easeInOut(duration: 0.1), value: tappedItemId)
             }
             .buttonStyle(.plain)
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
-            .disabled(!groupService.userHasWritePermission)
-            .opacity(groupService.userHasWritePermission ? 1.0 : 0.5)
+            .disabled(!groupService.userHasWritePermission || isTaken)
+            .opacity(groupService.userHasWritePermission && !isTaken ? 1.0 : 0.5)
         }
         .padding(.horizontal, AppTheme.Spacing.small)
         .padding(.vertical, AppTheme.Spacing.xSmall)
+        .opacity(isTaken ? 0.6 : 1.0)
     }
     
     private var healthItemsList: some View {
@@ -565,10 +648,36 @@ struct MyHealthDashboardView: View {
     
     // MARK: - Action Handlers
     
+    private func deleteMedication(_ medication: Medication) async {
+        do {
+            // Delete from Core Data first
+            try await CoreDataManager.shared.deleteMedication(medication.id)
+            
+            // Delete from Firebase if in a group
+            if FirebaseGroupService.shared.currentGroup != nil {
+                try await groupDataService.deleteMedication(medication.id.uuidString)
+            }
+            
+            // Refresh the view
+            await viewModel.loadData(forceRefresh: true)
+            
+            // Update notifications
+            await MedicationNotificationScheduler.shared.scheduleDailyNotifications()
+        } catch {
+            print("Error deleting medication: \(error)")
+        }
+    }
+    
     private func handleItemTap(_ item: any HealthItem) {
         #if DEBUG
         print("Tapped item: \(item.name)")
         #endif
+        
+        // Navigate to detail view for medications
+        if let medication = item as? Medication {
+            selectedMedication = medication
+            showMedicationDetail = true
+        }
         
         // Donate to Spotlight for better search and predictions
         donateToSpotlight(item: item)
@@ -584,7 +693,11 @@ struct MyHealthDashboardView: View {
         guard let dose = itemData.dose else { return }
         
         Task {
-            await viewModel.markDoseTaken(itemId: itemData.item.id, doseId: dose.id)
+            await viewModel.markDoseTaken(
+                itemId: itemData.item.id, 
+                doseId: dose.id,
+                firebaseDoseId: dose.firebaseDoseId
+            )
         }
     }
     
@@ -594,11 +707,20 @@ struct MyHealthDashboardView: View {
             return 
         }
         
-        Task {
+        Task { @MainActor in
             print("✅ Marking dose as taken for: \(itemData.item.name)")
-            await viewModel.markDoseTaken(itemId: itemData.item.id, doseId: dose.id)
+            await viewModel.markDoseTaken(
+                itemId: itemData.item.id, 
+                doseId: dose.id,
+                firebaseDoseId: dose.firebaseDoseId
+            )
+            
+            // Clear UI state
             pendingDoseToMark = nil
             tappedItemId = nil // Clear visual feedback
+            
+            // Force a refresh to ensure UI updates
+            await viewModel.loadData(forceRefresh: true)
             
             // Update badge count based on remaining items
             await updateBadgeCount()
@@ -787,16 +909,26 @@ final class MyHealthDashboardViewModel: ObservableObject {
         }
     }
     
-    func markDoseTaken(itemId: UUID, doseId: UUID) async {
+    func markDoseTaken(itemId: UUID, doseId: UUID, firebaseDoseId: String? = nil) async {
         do {
+            print("📝 MyHealthDashboardViewModel: Marking dose as taken...")
             let processedData = try await dataProcessor.markDoseTakenAndRefresh(
                 itemId: itemId,
-                doseId: doseId
+                doseId: doseId,
+                firebaseDoseId: firebaseDoseId
             )
-            allItems = processedData.items
-            periodCounts = processedData.periodCounts
+            
+            // Update the UI on main thread
+            await MainActor.run {
+                self.allItems = processedData.items
+                self.periodCounts = processedData.periodCounts
+                print("✅ UI updated with new dose status")
+            }
         } catch {
-            self.error = error as? AppError ?? AppError.coreDataSaveFailed
+            print("❌ Error marking dose as taken: \(error)")
+            await MainActor.run {
+                self.error = error as? AppError ?? AppError.coreDataSaveFailed
+            }
         }
     }
 }

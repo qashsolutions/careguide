@@ -27,6 +27,40 @@ struct CareMemosView: View {
     @State private var pendingRecordingResult: (url: URL, duration: TimeInterval)?
     @State private var showNoPermissionAlert = false
     
+    // Use Firebase memos when in a group, otherwise use Core Data memos
+    private var displayedMemos: [CareMemo] {
+        if groupService.currentGroup != nil {
+            // In a group - convert Firebase memos to CareMemo format
+            return firebaseMemos.memos.map { firestoreMemo in
+                // Convert priority string to MemoPriority enum
+                let priority: MemoPriority
+                if let priorityString = firestoreMemo.priority,
+                   let memoPriority = MemoPriority(rawValue: priorityString.capitalized) {
+                    priority = memoPriority
+                } else {
+                    priority = .medium
+                }
+                
+                // Convert related medication IDs from strings to UUIDs
+                let medicationIds = (firestoreMemo.relatedMedicationIds ?? []).compactMap { UUID(uuidString: $0) }
+                
+                return CareMemo(
+                    id: UUID(uuidString: firestoreMemo.id) ?? UUID(),
+                    audioFileURL: firestoreMemo.audioStorageUrl ?? "",
+                    duration: firestoreMemo.duration,
+                    recordedAt: firestoreMemo.recordedAt,
+                    title: firestoreMemo.title,
+                    transcription: firestoreMemo.transcription,
+                    relatedMedicationIds: medicationIds,
+                    priority: priority
+                )
+            }
+        } else {
+            // No group - use local Core Data memos
+            return viewModel.memos
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -52,12 +86,12 @@ struct CareMemosView: View {
                     
                     Divider()
                     
-                    // Memos list
-                    if viewModel.isLoading {
+                    // Memos list - use Firebase memos if in a group, otherwise Core Data
+                    if viewModel.isLoading || firebaseMemos.isSyncing {
                         Spacer()
                         ProgressView("Loading memos...")
                         Spacer()
-                    } else if viewModel.memos.isEmpty {
+                    } else if displayedMemos.isEmpty {
                         emptyStateView
                     } else {
                         memosList
@@ -82,9 +116,18 @@ struct CareMemosView: View {
             .alert("Delete Memo?", isPresented: $showingDeleteAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Delete", role: .destructive) {
-                    if let memo = memoToDelete {
+                    if let memo = memoToDelete, groupService.userHasWritePermission {
                         Task {
-                            await viewModel.deleteMemo(memo)
+                            // For Firebase memos, delete from Firebase
+                            if groupService.currentGroup != nil {
+                                // Find the Firebase memo and delete it
+                                if let firestoreMemo = firebaseMemos.memos.first(where: { $0.id == memo.id.uuidString }) {
+                                    try? await firebaseMemos.deleteMemo(firestoreMemo.documentId ?? memo.id.uuidString)
+                                }
+                            } else {
+                                // For local memos, delete from Core Data
+                                await viewModel.deleteMemo(memo)
+                            }
                         }
                     }
                 }
@@ -228,12 +271,15 @@ struct CareMemosView: View {
                             MemoRow(
                                 memo: memo,
                                 isPlaying: audioManager.currentlyPlayingId == memo.id,
+                                canDelete: groupService.userHasWritePermission,
                                 onPlay: {
                                     playMemo(memo)
                                 },
                                 onDelete: {
-                                    memoToDelete = memo
-                                    showingDeleteAlert = true
+                                    if groupService.userHasWritePermission {
+                                        memoToDelete = memo
+                                        showingDeleteAlert = true
+                                    }
                                 }
                             )
                         }
@@ -258,7 +304,7 @@ struct CareMemosView: View {
         HStack {
             ForEach(0..<10, id: \.self) { index in
                 Circle()
-                    .fill(index < viewModel.memoCount ? AppTheme.Colors.primaryBlue : Color.gray.opacity(0.3))
+                    .fill(index < displayedMemos.count ? AppTheme.Colors.primaryBlue : Color.gray.opacity(0.3))
                     .frame(width: 8, height: 8)
             }
         }
@@ -268,7 +314,7 @@ struct CareMemosView: View {
     // MARK: - Grouped Memos
     private var groupedMemos: [(key: Date, value: [CareMemo])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: viewModel.memos) { memo in
+        let grouped = Dictionary(grouping: displayedMemos) { memo in
             calendar.startOfDay(for: memo.recordedAt)
         }
         return grouped.sorted { $0.key > $1.key }
@@ -324,12 +370,17 @@ struct CareMemosView: View {
         if audioManager.currentlyPlayingId == memo.id {
             audioManager.stopPlayback()
         } else {
+            // Check if we have a valid URL (either local or Firebase Storage)
             if let url = memo.fileURL {
                 do {
                     try audioManager.play(url: url, memoId: memo.id)
                 } catch {
                     print("Failed to play memo: \(error)")
+                    print("Attempted URL: \(url)")
                 }
+            } else {
+                print("No valid URL for memo playback")
+                print("audioFileURL: \(memo.audioFileURL)")
             }
         }
     }
@@ -402,6 +453,7 @@ struct CareMemosView: View {
 struct MemoRow: View {
     let memo: CareMemo
     let isPlaying: Bool
+    let canDelete: Bool
     let onPlay: () -> Void
     let onDelete: () -> Void
     
@@ -437,11 +489,13 @@ struct MemoRow: View {
             
             Spacer()
             
-            // Delete button
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 20))
-                    .foregroundColor(AppTheme.Colors.errorRed)
+            // Delete button - only show for users with write permission
+            if canDelete {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 20))
+                        .foregroundColor(AppTheme.Colors.errorRed)
+                }
             }
         }
         .padding(AppTheme.Spacing.medium)

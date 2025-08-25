@@ -12,6 +12,8 @@ import CoreData
 struct CategoryDocumentsView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var groupService = FirebaseGroupService.shared
+    @StateObject private var firebaseDocuments = FirebaseDocumentsService.shared
     
     let category: DocumentCategoryEntity
     
@@ -24,6 +26,7 @@ struct CategoryDocumentsView: View {
     @State private var showSaveDocument = false
     @State private var pendingFileToSave: (url: URL, fileSize: Int64)?
     @State private var capturedImageToSave: UIImage?
+    @State private var showNoPermissionAlert = false
     
     @FetchRequest private var documents: FetchedResults<DocumentEntity>
     
@@ -36,15 +39,58 @@ struct CategoryDocumentsView: View {
         )
     }
     
+    // Computed property to get displayed documents (Firebase or Core Data)
+    private var displayedDocuments: [(id: String, filename: String, fileType: String, fileSize: Int64, createdAt: Date, notes: String?, storageUrl: String?)] {
+        if groupService.currentGroup != nil {
+            // In a group - show Firebase documents for this category
+            return firebaseDocuments.documents
+                .filter { $0.category == category.name }
+                .sorted { $0.createdAt > $1.createdAt }
+                .map { doc in
+                    (id: doc.id, 
+                     filename: doc.filename, 
+                     fileType: doc.fileType, 
+                     fileSize: doc.fileSize, 
+                     createdAt: doc.createdAt, 
+                     notes: doc.notes,
+                     storageUrl: doc.storageUrl)
+                }
+        } else {
+            // No group - use local Core Data documents
+            return documents.map { doc in
+                (id: doc.id?.uuidString ?? "", 
+                 filename: doc.filename ?? "Unknown", 
+                 fileType: doc.fileType ?? "unknown", 
+                 fileSize: doc.fileSize, 
+                 createdAt: doc.createdAt ?? Date(), 
+                 notes: doc.notes,
+                 storageUrl: nil)
+            }
+        }
+    }
+    
+    private var filteredDocuments: [(id: String, filename: String, fileType: String, fileSize: Int64, createdAt: Date, notes: String?, storageUrl: String?)] {
+        guard !searchText.isEmpty else { return displayedDocuments }
+        return displayedDocuments.filter { doc in
+            doc.filename.localizedCaseInsensitiveContains(searchText) ||
+            (doc.notes ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(hex: "F8F8F8").ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Show read-only banner at the top if applicable
+                ReadOnlyBanner()
                 
-                if documents.isEmpty && searchText.isEmpty {
-                    emptyStateView
-                } else {
-                    documentsList
+                ZStack {
+                    Color(hex: "F8F8F8").ignoresSafeArea()
+                    
+                    if displayedDocuments.isEmpty && searchText.isEmpty {
+                        emptyStateView
+                    } else {
+                        documentsList
+                    }
                 }
             }
             .navigationTitle(category.displayName)
@@ -60,18 +106,34 @@ struct CategoryDocumentsView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button(action: { showFilePicker = true }) {
+                        Button(action: { 
+                            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
+                                showNoPermissionAlert = true
+                            } else {
+                                showFilePicker = true
+                            }
+                        }) {
                             Label("Choose File", systemImage: "doc.badge.plus")
                         }
+                        .disabled(!groupService.userHasWritePermission && groupService.currentGroup != nil)
                         
-                        Button(action: { showCamera = true }) {
+                        Button(action: { 
+                            if !groupService.userHasWritePermission && groupService.currentGroup != nil {
+                                showNoPermissionAlert = true
+                            } else {
+                                showCamera = true
+                            }
+                        }) {
                             Label("Take Photo", systemImage: "camera.fill")
                         }
+                        .disabled(!groupService.userHasWritePermission && groupService.currentGroup != nil)
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: AppTheme.ElderTypography.headline))
-                            .foregroundColor(AppTheme.Colors.primaryBlue)
+                            .foregroundColor(groupService.userHasWritePermission || groupService.currentGroup == nil ? 
+                                            AppTheme.Colors.primaryBlue : Color.gray)
                     }
+                    .disabled(!groupService.userHasWritePermission && groupService.currentGroup != nil)
                 }
             }
             .sheet(isPresented: $showFilePicker) {
@@ -118,6 +180,11 @@ struct CategoryDocumentsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(storageAlertMessage)
+            }
+            .alert("View Only Access", isPresented: $showNoPermissionAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Contact your group admin to make changes")
             }
             .sheet(isPresented: $showSaveDocument) {
                 if let pending = pendingFileToSave {
@@ -174,17 +241,33 @@ struct CategoryDocumentsView: View {
                 categoryHeader
                 
                 // Documents
-                ForEach(filteredDocuments) { document in
-                    DocumentRowView(document: document) {
-                        selectedDocument = document
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            deleteDocument(document)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                ForEach(filteredDocuments, id: \.id) { document in
+                    FirebaseDocumentRowView(
+                        filename: document.filename,
+                        fileType: document.fileType,
+                        fileSize: document.fileSize,
+                        createdAt: document.createdAt,
+                        notes: document.notes,
+                        storageUrl: document.storageUrl,
+                        canDelete: groupService.userHasWritePermission,
+                        onTap: {
+                            // Handle document tap (view/download)
+                            if let url = document.storageUrl, let storageURL = URL(string: url) {
+                                // Open the document URL
+                                UIApplication.shared.open(storageURL)
+                            }
+                        },
+                        onDelete: {
+                            // Only allow deletion for users with write permission
+                            if groupService.userHasWritePermission {
+                                Task {
+                                    if let firestoreDoc = firebaseDocuments.documents.first(where: { $0.id == document.id }) {
+                                        try? await firebaseDocuments.deleteDocument(firestoreDoc.documentId ?? document.id)
+                                    }
+                                }
+                            }
                         }
-                    }
+                    )
                 }
             }
             .padding(AppTheme.Spacing.screenPadding)
@@ -198,11 +281,12 @@ struct CategoryDocumentsView: View {
                 .foregroundColor(category.categoryColor)
             
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
-                Text("\(documents.count) document\(documents.count == 1 ? "" : "s")")
+                Text("\(displayedDocuments.count) document\(displayedDocuments.count == 1 ? "" : "s")")
                     .font(.monaco(AppTheme.ElderTypography.headline - 4))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 
-                Text(category.formattedTotalSize)
+                let totalSize = displayedDocuments.reduce(0) { $0 + $1.fileSize }
+                Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
                     .font(.monaco(AppTheme.ElderTypography.caption - 3))
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
@@ -259,14 +343,6 @@ struct CategoryDocumentsView: View {
             .padding(.horizontal, AppTheme.Spacing.xxLarge)
             
             Spacer()
-        }
-    }
-    
-    private var filteredDocuments: [DocumentEntity] {
-        if searchText.isEmpty {
-            return Array(documents)
-        } else {
-            return documents.filter { $0.matches(searchTerm: searchText) }
         }
     }
     
@@ -376,6 +452,102 @@ struct CategoryDocumentsView: View {
             storageAlertMessage = "Failed to save photo: \(error.localizedDescription)"
             showStorageAlert = true
         }
+    }
+}
+
+// MARK: - Firebase Document Row View
+@available(iOS 18.0, *)
+struct FirebaseDocumentRowView: View {
+    let filename: String
+    let fileType: String
+    let fileSize: Int64
+    let createdAt: Date
+    let notes: String?
+    let storageUrl: String?
+    let canDelete: Bool
+    let onTap: () -> Void
+    let onDelete: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: AppTheme.Spacing.medium) {
+                // File type icon
+                Image(systemName: fileTypeIcon)
+                    .font(.system(size: 28))
+                    .foregroundColor(AppTheme.Colors.primaryBlue)
+                    .frame(width: 40)
+                
+                // Document info
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xSmall) {
+                    Text(filename)
+                        .font(.monaco(AppTheme.ElderTypography.headline - 4))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(2)
+                    
+                    HStack(spacing: AppTheme.Spacing.medium) {
+                        Text(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))
+                            .font(.monaco(AppTheme.ElderTypography.caption - 3))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        
+                        Text("•")
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        
+                        Text(formattedDate)
+                            .font(.monaco(AppTheme.ElderTypography.caption - 3))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    
+                    if let notes = notes, !notes.isEmpty {
+                        Text(notes)
+                            .font(.monaco(AppTheme.ElderTypography.footnote - 2))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(2)
+                    }
+                }
+                
+                Spacer()
+                
+                // Chevron indicator
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .padding(AppTheme.Spacing.medium)
+        }
+        .background(Color.white)
+        .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if canDelete {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
+    }
+    
+    private var fileTypeIcon: String {
+        switch fileType.lowercased() {
+        case "pdf":
+            return "doc.text"
+        case "jpg", "jpeg", "png", "heic":
+            return "photo"
+        case "doc", "docx":
+            return "doc.richtext"
+        case "txt":
+            return "doc.plaintext"
+        default:
+            return "doc"
+        }
+    }
+    
+    private var formattedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: createdAt)
     }
 }
 

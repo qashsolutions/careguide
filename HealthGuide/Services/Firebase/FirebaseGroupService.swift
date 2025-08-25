@@ -20,6 +20,8 @@ final class FirebaseGroupService: ObservableObject {
     private let db = Firestore.firestore()
     private let authService = FirebaseAuthService.shared
     private var groupListeners: [String: ListenerRegistration] = [:]
+    private var accessListener: ListenerRegistration?
+    private var memberStatusListener: ListenerRegistration?
     
     @Published var currentGroup: FirestoreGroup? {
         didSet {
@@ -234,6 +236,11 @@ final class FirebaseGroupService: ObservableObject {
                 
                 // Start listening to this group
                 startListeningToGroup(groupId: group.id)
+                
+                // Start monitoring member status for access revocation (for non-admin members)
+                if !group.adminIds.contains(userId) {
+                    startMemberStatusMonitoring(groupId: group.id, userId: userId)
+                }
             }
             
         } catch {
@@ -372,6 +379,13 @@ final class FirebaseGroupService: ObservableObject {
         // Ensure user is authenticated
         let userId = try await authService.getCurrentUserId()
         
+        // CRITICAL: Check if user is eligible to create a group (30-day cooldown after being a member)
+        let isEligible = try await checkTransitionEligibility(userId: userId)
+        if !isEligible {
+            AppLogger.main.error("❌ User not eligible to create group due to cooldown period")
+            throw GroupError.transitionCooldown
+        }
+        
         // DELETE OLD GROUP if exists (only one group at a time)
         // Only delete if user owns the group
         if let oldGroup = currentGroup, oldGroup.createdBy == userId {
@@ -445,6 +459,43 @@ final class FirebaseGroupService: ObservableObject {
         }
     }
     
+    // MARK: - Get Group By Invite Code
+    func getGroupByInviteCode(_ inviteCode: String) async throws -> FirestoreGroup {
+        let upperInviteCode = inviteCode.uppercased()
+        
+        // Look up group ID from invite code
+        let inviteDoc = try await db.collection("inviteCodes").document(upperInviteCode).getDocument()
+        
+        guard let groupId = inviteDoc.data()?["groupId"] as? String else {
+            throw GroupError.invalidInviteCode
+        }
+        
+        // Get the group document
+        let groupDoc = try await db.collection("groups").document(groupId).getDocument()
+        
+        guard let data = groupDoc.data() else {
+            throw GroupError.groupNotFound
+        }
+        
+        // Decode the group
+        let group = FirestoreGroup(
+            documentId: groupDoc.documentID,
+            id: data["id"] as? String ?? "",
+            name: data["name"] as? String ?? "",
+            inviteCode: data["inviteCode"] as? String ?? "",
+            createdBy: data["createdBy"] as? String ?? "",
+            adminIds: data["adminIds"] as? [String] ?? [],
+            memberIds: data["memberIds"] as? [String] ?? [],
+            writePermissionIds: data["writePermissionIds"] as? [String] ?? [],
+            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
+            updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date(),
+            trialStartDate: (data["trialStartDate"] as? Timestamp)?.dateValue(),
+            trialEndDate: (data["trialEndDate"] as? Timestamp)?.dateValue()
+        )
+        
+        return group
+    }
+    
     // MARK: - Join Group
     func joinGroup(inviteCode: String, memberName: String) async throws -> FirestoreGroup {
         isSyncing = true
@@ -472,7 +523,7 @@ final class FirebaseGroupService: ObservableObject {
                 throw GroupError.groupNotFound
             }
             
-            // Manually decode
+            // Manually decode - INCLUDING trial dates for proper inheritance
             var group = FirestoreGroup(
                 documentId: groupDoc.documentID,
                 id: data["id"] as? String ?? "",
@@ -483,7 +534,9 @@ final class FirebaseGroupService: ObservableObject {
                 memberIds: data["memberIds"] as? [String] ?? [],
                 writePermissionIds: data["writePermissionIds"] as? [String] ?? [],
                 createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
-                updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
+                updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date(),
+                trialStartDate: (data["trialStartDate"] as? Timestamp)?.dateValue(),
+                trialEndDate: (data["trialEndDate"] as? Timestamp)?.dateValue()
             )
             
             // Check if already a member
@@ -523,13 +576,23 @@ final class FirebaseGroupService: ObservableObject {
                 .collection("members").document(userId)
                 .setData(member.dictionary)
             
+            // CRITICAL: Update transition tracking to prevent creating a group for 30 days
+            // This prevents gaming where member becomes admin on day 14
+            try await updateTransitionTracking(userId: userId)
+            AppLogger.main.info("🔒 Transition tracking updated - 30 day cooldown activated")
+            
             currentGroup = group
             AppLogger.main.info("✅ Joined group via Firebase: \(group.name)")
             
             // Sync trial period with group's admin trial
             if let trialStart = group.trialStartDate, let trialEnd = group.trialEndDate {
                 AppLogger.main.info("📅 Inheriting trial period from group admin")
+                AppLogger.main.info("   Trial starts: \(trialStart)")
                 AppLogger.main.info("   Trial ends: \(trialEnd)")
+                
+                // Calculate days used based on group's trial start date
+                let daysUsed = Calendar.current.dateComponents([.day], from: trialStart, to: Date()).day ?? 0
+                AppLogger.main.info("   Member joining on day \(daysUsed + 1) of 14")
                 
                 // Update local subscription manager with group's trial dates
                 await SubscriptionManager.shared.setTrialState(
@@ -537,6 +600,14 @@ final class FirebaseGroupService: ObservableObject {
                     endDate: trialEnd,
                     sessionsUsed: 0,
                     sessionsRemaining: 999
+                )
+                
+                // Also update CloudTrialManager to sync the trial state
+                // This ensures the trial days display correctly for group members
+                await CloudTrialManager.shared.syncGroupMemberTrial(
+                    groupId: groupId,
+                    trialStartDate: trialStart,
+                    trialEndDate: trialEnd
                 )
             }
             
@@ -547,6 +618,12 @@ final class FirebaseGroupService: ObservableObject {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
                 await MainActor.run {
                     startListeningToGroup(groupId: groupId)
+                    
+                    // Start monitoring member status for access revocation
+                    if !group.adminIds.contains(userId) {
+                        // Only monitor for non-admin members
+                        startMemberStatusMonitoring(groupId: groupId, userId: userId)
+                    }
                 }
             }
             
@@ -601,7 +678,7 @@ final class FirebaseGroupService: ObservableObject {
             throw GroupError.notAdmin
         }
         
-        // Update member's access status
+        // Update member's access status in subcollection
         try await db.collection("groups").document(groupId)
             .collection("members").document(memberId)
             .updateData([
@@ -609,19 +686,48 @@ final class FirebaseGroupService: ObservableObject {
                 "updatedAt": FieldValue.serverTimestamp()
             ])
         
-        // If disabling access, also remove from write permissions
         if !isEnabled {
+            // DISABLE: Remove from arrays using explicit array manipulation (more reliable)
+            let groupDoc = try await db.collection("groups").document(groupId).getDocument()
+            guard let data = groupDoc.data() else {
+                AppLogger.main.error("❌ Could not get group data to toggle access")
+                return
+            }
+            
+            var memberIds = data["memberIds"] as? [String] ?? []
+            var writePermissionIds = data["writePermissionIds"] as? [String] ?? []
+            
+            // Remove the member from arrays
+            let wasInMemberIds = memberIds.contains(memberId)
+            memberIds.removeAll { $0 == memberId }
+            writePermissionIds.removeAll { $0 == memberId }
+            
+            // Update with explicit arrays
             try await db.collection("groups").document(groupId).updateData([
-                "writePermissionIds": FieldValue.arrayRemove([memberId])
+                "memberIds": memberIds,
+                "writePermissionIds": writePermissionIds,
+                "updatedAt": FieldValue.serverTimestamp()
             ])
+            
+            AppLogger.main.info("🚫 Member access DISABLED - removed from group: \(memberId)")
+            AppLogger.main.info("   Was in memberIds: \(wasInMemberIds)")
+            AppLogger.main.info("   Remaining memberIds: \(memberIds)")
+            
+            // Post notification to force disabled user to logout
+            NotificationCenter.default.post(
+                name: .memberAccessRevoked,
+                object: nil,
+                userInfo: ["memberId": memberId]
+            )
         } else {
-            // Re-enable write permissions when access is restored
+            // ENABLE: Add back to memberIds (but NOT writePermissionIds - they remain read-only)
             try await db.collection("groups").document(groupId).updateData([
-                "writePermissionIds": FieldValue.arrayUnion([memberId])
+                "memberIds": FieldValue.arrayUnion([memberId]),
+                "updatedAt": FieldValue.serverTimestamp()
             ])
+            
+            AppLogger.main.info("✅ Member access ENABLED - added back to group: \(memberId)")
         }
-        
-        AppLogger.main.info("✅ Member access \(isEnabled ? "enabled" : "disabled")")
     }
     
     // MARK: - Remove Member from Group
@@ -871,6 +977,108 @@ final class FirebaseGroupService: ObservableObject {
     }
     
     // MARK: - Real-time Listener
+    
+    /// Periodically check if member still has access (backup to real-time listener)
+    private var accessCheckTimer: Timer?
+    
+    /// Monitor member status for access revocation
+    private func startMemberStatusMonitoring(groupId: String, userId: String) {
+        AppLogger.main.info("👁️ Starting member status monitoring for group: \(groupId)")
+        
+        // Stop any existing listener
+        memberStatusListener?.remove()
+        accessCheckTimer?.invalidate()
+        
+        // Start periodic check as backup (every 5 seconds)
+        accessCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.checkMemberAccess(groupId: groupId, userId: userId)
+            }
+        }
+        
+        // Listen to the group document for memberIds changes
+        memberStatusListener = db.collection("groups").document(groupId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    AppLogger.main.error("❌ Error monitoring member status: \(error)")
+                    return
+                }
+                
+                guard let data = snapshot?.data(),
+                      let memberIds = data["memberIds"] as? [String] else {
+                    AppLogger.main.warning("⚠️ No member data in group snapshot")
+                    return
+                }
+                
+                // Check if current user is still in memberIds
+                if !memberIds.contains(userId) {
+                    AppLogger.main.warning("🚫 User access revoked - no longer in memberIds")
+                    
+                    Task { @MainActor in
+                        // User has been removed from the group
+                        self.handleAccessRevoked()
+                    }
+                }
+            }
+    }
+    
+    /// Periodically check member access (backup check)
+    @MainActor
+    private func checkMemberAccess(groupId: String, userId: String) async {
+        do {
+            let groupDoc = try await db.collection("groups").document(groupId).getDocument()
+            
+            guard let data = groupDoc.data(),
+                  let memberIds = data["memberIds"] as? [String] else {
+                AppLogger.main.warning("⚠️ Could not verify member access")
+                return
+            }
+            
+            if !memberIds.contains(userId) {
+                AppLogger.main.warning("🚫 Periodic check: User no longer in memberIds")
+                handleAccessRevoked()
+            }
+        } catch {
+            AppLogger.main.error("❌ Error checking member access: \(error)")
+        }
+    }
+    
+    /// Handle when a member's access is revoked
+    @MainActor
+    private func handleAccessRevoked() {
+        AppLogger.main.info("🔒 Handling access revocation...")
+        
+        // Stop all listeners and timers
+        memberStatusListener?.remove()
+        memberStatusListener = nil
+        accessCheckTimer?.invalidate()
+        accessCheckTimer = nil
+        
+        // Clear current group
+        currentGroup = nil
+        
+        // Stop all Firebase services
+        Task {
+            await FirebaseServiceManager.shared.stopAllListeners()
+        }
+        
+        // Clear cached data from UserDefaults
+        UserDefaults.standard.removeObject(forKey: "currentFirebaseGroupId")
+        UserDefaults.standard.synchronize()
+        AppLogger.main.debug("Cleared Firebase group from UserDefaults")
+        
+        // Post notification to show blocking modal
+        NotificationCenter.default.post(
+            name: .memberAccessRevoked,
+            object: nil,
+            userInfo: ["message": "Your access to this group has been revoked by the admin."]
+        )
+        
+        AppLogger.main.info("✅ Access revocation handled - user must rejoin or create new group")
+    }
+    
     private func startListeningToGroup(groupId: String) {
         // Remove existing listener if any
         stopListeningToGroup(groupId: groupId)
@@ -895,6 +1103,26 @@ final class FirebaseGroupService: ObservableObject {
                             // Try to create a new personal group
                             try? await self.createPersonalGroup()
                         }
+                    }
+                    return
+                }
+                
+                // Check if current user is still in memberIds
+                if let userId = try? self.authService.getCurrentUserIdSync(),
+                   let memberIds = data["memberIds"] as? [String],
+                   !memberIds.contains(userId) {
+                    // User has been removed/disabled from the group
+                    AppLogger.main.warning("🚫 User access revoked - removed from memberIds")
+                    Task { @MainActor in
+                        self.currentGroup = nil
+                        UserDefaults.standard.removeObject(forKey: "currentFirebaseGroupId")
+                        
+                        // Post notification to show alert
+                        NotificationCenter.default.post(
+                            name: .memberAccessRevoked,
+                            object: nil,
+                            userInfo: ["message": "Your access has been revoked by the group admin."]
+                        )
                     }
                     return
                 }
@@ -1115,6 +1343,136 @@ final class FirebaseGroupService: ObservableObject {
         groupListeners.removeAll()
     }
     
+    // MARK: - Member to Admin Transition Methods
+    
+    /// Check if user is eligible for member-to-admin transition
+    func checkTransitionEligibility(userId: String) async throws -> Bool {
+        let userDoc = try await db.collection("users").document(userId).getDocument()
+        
+        if let data = userDoc.data() {
+            let transitionCount = data["transitionCount"] as? Int ?? 0
+            let lastTransitionAt = (data["lastTransitionAt"] as? Timestamp)?.dateValue()
+            
+            // Check max transitions (3 lifetime)
+            if transitionCount >= 3 {
+                AppLogger.main.warning("❌ User has reached maximum transitions: \(transitionCount)")
+                return false
+            }
+            
+            // Check cooldown (30 days)
+            if let lastTransition = lastTransitionAt {
+                let daysSinceLastTransition = Calendar.current.dateComponents([.day], from: lastTransition, to: Date()).day ?? 0
+                if daysSinceLastTransition < 30 {
+                    AppLogger.main.warning("❌ User must wait \(30 - daysSinceLastTransition) more days")
+                    return false
+                }
+            }
+            
+            return true
+        }
+        
+        // First transition - allowed
+        return true
+    }
+    
+    /// Leave current group as a member
+    func leaveGroupAsMember(groupId: String, userId: String) async throws {
+        // Remove from group's memberIds
+        try await db.collection("groups").document(groupId).updateData([
+            "memberIds": FieldValue.arrayRemove([userId]),
+            "updatedAt": FieldValue.serverTimestamp()
+        ])
+        
+        // Delete member document
+        try await db.collection("groups").document(groupId)
+            .collection("members").document(userId).delete()
+        
+        // Clear current group
+        currentGroup = nil
+        
+        // Stop listening to the old group
+        stopListeningToGroup(groupId: groupId)
+        
+        AppLogger.main.info("✅ User left group as member")
+    }
+    
+    /// Create a new personal group as admin with fresh trial
+    func createPersonalGroupAsNewAdmin() async throws {
+        guard let userId = try? await authService.getCurrentUserId() else {
+            throw AppError.notAuthenticated
+        }
+        
+        // Create new group with fresh 14-day trial
+        let groupId = UUID().uuidString
+        let inviteCode = generateInviteCode()
+        
+        // Fresh trial dates (not inherited)
+        let trialStart = Date()
+        let trialEnd = Calendar.current.date(byAdding: .day, value: 14, to: trialStart)
+        
+        let group = FirestoreGroup(
+            id: groupId,
+            name: "My Care Group",
+            inviteCode: inviteCode,
+            createdBy: userId,
+            adminIds: [userId],
+            memberIds: [userId],
+            writePermissionIds: [userId],
+            createdAt: Date(),
+            updatedAt: Date(),
+            trialStartDate: trialStart,
+            trialEndDate: trialEnd
+        )
+        
+        // Save to Firestore
+        try await db.collection("groups").document(groupId).setData(group.dictionary)
+        
+        // Save invite code mapping
+        try await db.collection("inviteCodes").document(inviteCode.uppercased()).setData([
+            "groupId": groupId,
+            "createdAt": FieldValue.serverTimestamp()
+        ])
+        
+        // Update user role
+        try await db.collection("users").document(userId).setData([
+            "currentRole": "admin",
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
+        
+        currentGroup = group
+        
+        // Start fresh trial in local subscription manager
+        await SubscriptionManager.shared.setTrialState(
+            startDate: trialStart,
+            endDate: trialEnd!,
+            sessionsUsed: 0,
+            sessionsRemaining: 999
+        )
+        
+        // Start listening to new group
+        startListeningToGroup(groupId: groupId)
+        
+        AppLogger.main.info("✅ Created new personal group as admin with fresh trial")
+    }
+    
+    /// Update transition tracking after successful transition
+    func updateTransitionTracking(userId: String) async throws {
+        let userRef = db.collection("users").document(userId)
+        
+        // Get current count
+        let doc = try await userRef.getDocument()
+        let currentCount = doc.data()?["transitionCount"] as? Int ?? 0
+        
+        // Update tracking
+        try await userRef.setData([
+            "lastTransitionAt": FieldValue.serverTimestamp(),
+            "transitionCount": currentCount + 1,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
+        
+        AppLogger.main.info("✅ Updated transition tracking: count=\(currentCount + 1)")
+    }
+    
     deinit {
         // Cleanup is handled by the caller when needed
         // Cannot call @MainActor methods from deinit
@@ -1130,6 +1488,7 @@ enum GroupError: LocalizedError {
     case notAdmin
     case noWritePermission
     case cannotRemovePrimaryAdmin
+    case transitionCooldown
     
     var errorDescription: String? {
         switch self {
@@ -1147,6 +1506,8 @@ enum GroupError: LocalizedError {
             return "You don't have permission to modify this data"
         case .cannotRemovePrimaryAdmin:
             return "Cannot remove the primary admin from the group"
+        case .transitionCooldown:
+            return "You must wait 30 days after leaving a group before creating a new one"
         }
     }
 }
@@ -1154,4 +1515,6 @@ enum GroupError: LocalizedError {
 // MARK: - Notification Names
 extension Notification.Name {
     static let firebaseGroupDidChange = Notification.Name("firebaseGroupDidChange")
+    static let memberAccessRevoked = Notification.Name("memberAccessRevoked")
+    static let firebasePermissionDenied = Notification.Name("firebasePermissionDenied")
 }

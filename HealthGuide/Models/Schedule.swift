@@ -182,6 +182,39 @@ extension Schedule {
         return nil
     }
     
+    /// Generate dose times for a specific date
+    /// - Parameter date: The date to generate dose times for
+    /// - Returns: Array of dates representing dose times
+    func generateDoseTimes(for date: Date) -> [Date] {
+        guard isScheduledForDate(date) else { return [] }
+        
+        let calendar = Calendar.current
+        var doseTimes: [Date] = []
+        
+        // Add times for each time period
+        for (index, period) in timePeriods.enumerated() where index < frequency.count {
+            if let time = calendar.date(bySettingHour: period.defaultTime.hour,
+                                       minute: period.defaultTime.minute,
+                                       second: 0,
+                                       of: date) {
+                doseTimes.append(time)
+            }
+        }
+        
+        // Add custom times
+        for customTime in customTimes {
+            let components = calendar.dateComponents([.hour, .minute], from: customTime)
+            if let time = calendar.date(bySettingHour: components.hour ?? 0,
+                                      minute: components.minute ?? 0,
+                                      second: 0,
+                                      of: date) {
+                doseTimes.append(time)
+            }
+        }
+        
+        return doseTimes.sorted()
+    }
+    
     private func getAllScheduledTimes(for date: Date) -> [Date] {
         dosesForDate(date).map { $0.time }.sorted()
     }

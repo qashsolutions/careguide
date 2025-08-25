@@ -418,7 +418,7 @@ final class FirebaseHealthService: ObservableObject {
         }
         
         // Delete associated doses
-        let dosesToDelete = doses.filter { $0.medicationId == medicationId }
+        let dosesToDelete = doses.filter { $0.itemId == medicationId && $0.itemType == "medication" }
         for dose in dosesToDelete {
             try await deleteDose(dose.id)
         }
@@ -575,7 +575,7 @@ final class FirebaseHealthService: ObservableObject {
     
     private func generateDoses(for medication: FirestoreMedication, schedule: Schedule) async {
         guard let groupId = currentGroupId,
-              let userId = Auth.auth().currentUser?.uid ?? currentUserId else { return }
+              let _ = Auth.auth().currentUser?.uid ?? currentUserId else { return }
         
         let calendar = Calendar.current
         let today = Date()
@@ -588,18 +588,29 @@ final class FirebaseHealthService: ObservableObject {
                 let scheduledDoses = schedule.dosesForDate(date)
                 
                 for dose in scheduledDoses {
+                    // Determine period from dose time
+                    let hour = calendar.component(.hour, from: dose.time)
+                    let period: String
+                    if hour < 12 {
+                        period = "breakfast"
+                    } else if hour < 17 {
+                        period = "lunch"
+                    } else {
+                        period = "dinner"
+                    }
+                    
                     let firestoreDose = FirestoreDose(
                         id: UUID().uuidString,
-                        groupId: groupId,
-                        medicationId: medication.id,
-                        supplementId: nil,
-                        dietId: nil,
+                        itemId: medication.id,
+                        itemType: "medication",
+                        itemName: medication.name,
+                        period: period,
+                        itemDosage: medication.dosage,
                         scheduledTime: dose.time,
-                        period: dose.period.rawValue,
                         isTaken: false,
                         takenAt: nil,
-                        notes: nil,
-                        createdBy: userId,
+                        takenBy: nil,
+                        takenByName: nil,
                         createdAt: Date(),
                         updatedAt: Date()
                     )
@@ -620,7 +631,7 @@ final class FirebaseHealthService: ObservableObject {
     
     private func generateDosesForSupplement(_ supplement: FirestoreSupplement, schedule: Schedule) async {
         guard let groupId = currentGroupId,
-              let userId = Auth.auth().currentUser?.uid ?? currentUserId else { return }
+              let _ = Auth.auth().currentUser?.uid ?? currentUserId else { return }
         
         let calendar = Calendar.current
         let today = Date()
@@ -633,18 +644,29 @@ final class FirebaseHealthService: ObservableObject {
                 let scheduledDoses = schedule.dosesForDate(date)
                 
                 for dose in scheduledDoses {
+                    // Determine period from dose time
+                    let hour = calendar.component(.hour, from: dose.time)
+                    let period: String
+                    if hour < 12 {
+                        period = "breakfast"
+                    } else if hour < 17 {
+                        period = "lunch"
+                    } else {
+                        period = "dinner"
+                    }
+                    
                     let firestoreDose = FirestoreDose(
                         id: UUID().uuidString,
-                        groupId: groupId,
-                        medicationId: nil,
-                        supplementId: supplement.id,
-                        dietId: nil,
+                        itemId: supplement.id,
+                        itemType: "supplement",
+                        itemName: supplement.name,
+                        period: period,
+                        itemDosage: supplement.dosage,
                         scheduledTime: dose.time,
-                        period: dose.period.rawValue,
                         isTaken: false,
                         takenAt: nil,
-                        notes: nil,
-                        createdBy: userId,
+                        takenBy: nil,
+                        takenByName: nil,
                         createdAt: Date(),
                         updatedAt: Date()
                     )
@@ -665,7 +687,7 @@ final class FirebaseHealthService: ObservableObject {
     
     private func generateDosesForDiet(_ diet: FirestoreDiet, schedule: Schedule) async {
         guard let groupId = currentGroupId,
-              let userId = Auth.auth().currentUser?.uid ?? currentUserId else { return }
+              let _ = Auth.auth().currentUser?.uid ?? currentUserId else { return }
         
         let calendar = Calendar.current
         let today = Date()
@@ -678,18 +700,29 @@ final class FirebaseHealthService: ObservableObject {
                 let scheduledDoses = schedule.dosesForDate(date)
                 
                 for dose in scheduledDoses {
+                    // Determine period from dose time
+                    let hour = calendar.component(.hour, from: dose.time)
+                    let period: String
+                    if hour < 12 {
+                        period = "breakfast"
+                    } else if hour < 17 {
+                        period = "lunch"
+                    } else {
+                        period = "dinner"
+                    }
+                    
                     let firestoreDose = FirestoreDose(
                         id: UUID().uuidString,
-                        groupId: groupId,
-                        medicationId: nil,
-                        supplementId: nil,
-                        dietId: diet.id,
+                        itemId: diet.id,
+                        itemType: "diet",
+                        itemName: diet.name,
+                        period: period,
+                        itemDosage: diet.portion,
                         scheduledTime: dose.time,
-                        period: dose.period.rawValue,
                         isTaken: false,
                         takenAt: nil,
-                        notes: nil,
-                        createdBy: userId,
+                        takenBy: nil,
+                        takenByName: nil,
                         createdAt: Date(),
                         updatedAt: Date()
                     )

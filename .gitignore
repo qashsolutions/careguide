@@ -30,4 +30,4 @@ GoogleService-Info.plist
 HealthGuide/GoogleService-Info.plist
 
 # Documentation (temporary)
-*.md
+# *.md  # Commented out - markdown files should be tracked
