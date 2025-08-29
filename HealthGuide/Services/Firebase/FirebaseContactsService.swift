@@ -271,6 +271,14 @@ final class FirebaseContactsService: ObservableObject {
             return
         }
         
+        // Check if user is still a member of the group
+        guard let userId = Auth.auth().currentUser?.uid,
+              group.memberIds.contains(userId) else {
+            AppLogger.main.warning("🚫 User not authorized to access contacts")
+            contacts = []  // Clear any cached data
+            return
+        }
+        
         // Setup real-time listener
         contactsListener = db.collection("groups")
             .document(group.id)

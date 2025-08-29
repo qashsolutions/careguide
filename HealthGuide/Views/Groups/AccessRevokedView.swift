@@ -28,12 +28,14 @@ struct AccessRevokedView: View {
                     Image(systemName: "person.crop.circle.badge.xmark")
                         .font(.system(size: 60))
                         .foregroundColor(AppTheme.Colors.warningOrange)
+                        .padding(.top, AppTheme.Spacing.medium) // Add padding to ensure icon is visible
                     
                     Text("Group Access Changed")
-                        .font(.monaco(AppTheme.ElderTypography.largeTitle))
+                        .font(.monaco(AppTheme.ElderTypography.headline)) // Reduced from title to headline
+                        .fontWeight(.semibold)
                         .foregroundColor(AppTheme.Colors.textPrimary)
                 }
-                .padding(.top, AppTheme.Spacing.xxLarge)
+                .padding(.top, AppTheme.Spacing.large) // Reduced from xxLarge
                 
                 // Message
                 VStack(spacing: AppTheme.Spacing.medium) {
@@ -201,27 +203,57 @@ struct AccessRevokedView: View {
             // Get user's transition tracking data
             let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
             
-            if let data = userDoc.data() {
-                let lastTransitionAt = (data["lastTransitionAt"] as? Timestamp)?.dateValue()
+            if userDoc.exists, let data = userDoc.data() {
+                // Check new cooldown fields that match server rules
+                let canCreate = data["canCreateGroup"] as? Bool ?? true
+                let cooldownEndDate = (data["cooldownEndDate"] as? Timestamp)?.dateValue()
+                let currentRole = data["currentRole"] as? String
                 
-                // Check cooldown (30 days)
-                if let lastTransition = lastTransitionAt {
-                    let daysSinceLastTransition = Calendar.current.dateComponents([.day], from: lastTransition, to: Date()).day ?? 0
-                    if daysSinceLastTransition < 30 {
-                        canCreateGroup = false
-                        cooldownDaysRemaining = 30 - daysSinceLastTransition
+                if !canCreate {
+                    if let cooldownEnd = cooldownEndDate {
+                        if Date() < cooldownEnd {
+                            // Still in cooldown
+                            cooldownDaysRemaining = Calendar.current.dateComponents([.day], from: Date(), to: cooldownEnd).day ?? 0
+                            canCreateGroup = false
+                            
+                            AppLogger.main.info("🚫 User in cooldown until: \(cooldownEnd)")
+                            AppLogger.main.info("   Days remaining: \(cooldownDaysRemaining)")
+                            AppLogger.main.info("   Current role: \(currentRole ?? "unknown")")
+                        } else {
+                            // Cooldown expired
+                            canCreateGroup = true
+                            cooldownDaysRemaining = 0
+                            
+                            // Update Firestore to mark cooldown as expired
+                            try await Firestore.firestore().collection("users").document(userId).updateData([
+                                "canCreateGroup": true,
+                                "updatedAt": FieldValue.serverTimestamp()
+                            ])
+                        }
                     } else {
-                        canCreateGroup = true
+                        // No cooldown date but can't create - shouldn't happen
+                        canCreateGroup = false
+                        cooldownDaysRemaining = 30 // Default cooldown
                     }
                 } else {
-                    // No previous transition, eligible
+                    // Can create group
                     canCreateGroup = true
+                    cooldownDaysRemaining = 0
+                }
+                
+                // Also check legacy transition count
+                let transitionCount = data["transitionCount"] as? Int ?? 0
+                if transitionCount >= 3 {
+                    cooldownDaysRemaining = -1 // Special value for max transitions
+                    canCreateGroup = false
                 }
             } else {
-                // No tracking data, eligible
+                // No user document = new user, can create group
                 canCreateGroup = true
+                cooldownDaysRemaining = 0
             }
         } catch {
+            AppLogger.main.error("❌ Error checking eligibility: \(error)")
             // Default to eligible on error
             canCreateGroup = true
         }

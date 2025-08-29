@@ -22,6 +22,8 @@ struct JoinGroupPromptView: View {
     @State private var isJoining = false
     @State private var showTrialStatus = false
     @State private var joinedGroup: FirestoreGroup?
+    @State private var showWaitingForApproval = false
+    @State private var pendingGroupName = ""
     
     @FocusState private var isCodeFieldFocused: Bool
     
@@ -162,6 +164,37 @@ struct JoinGroupPromptView: View {
                 .environmentObject(subscriptionManager)
                 .interactiveDismissDisabled()
             }
+            .fullScreenCover(isPresented: $showWaitingForApproval) {
+                WaitingForApprovalView(groupName: pendingGroupName)
+                    .onDisappear {
+                        // Check if approved (group now exists)
+                        Task {
+                            // Use the saved invite code to load the CORRECT group
+                            do {
+                                // Get the specific group they joined using invite code
+                                let group = try await FirebaseGroupService.shared.getGroupByInviteCode(inviteCode)
+                                
+                                print("📱 Member loaded CORRECT group after approval:")
+                                print("   Name: \(group.name)")
+                                print("   Group ID: \(group.id)")
+                                print("   Trial End Date: \(group.trialEndDate?.description ?? "nil")")
+                                print("   Trial Start Date: \(group.trialStartDate?.description ?? "nil")")
+                                
+                                // Set this specific group as current (not first from list)
+                                FirebaseGroupService.shared.currentGroup = group
+                                
+                                await MainActor.run {
+                                    joinedGroup = group
+                                    showTrialStatus = true
+                                }
+                            } catch {
+                                print("❌ Failed to load approved group: \(error)")
+                                // Fallback to finding user groups
+                                await FirebaseGroupService.shared.findUserGroups()
+                            }
+                        }
+                    }
+            }
         }
     }
     
@@ -193,16 +226,24 @@ struct JoinGroupPromptView: View {
                 // Small delay to ensure auth propagates
                 try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 
-                // Now try to join the group (this handles "already member" internally)
-                let group = try await firebaseGroups.joinGroup(
+                // Get the group name first for the waiting view
+                let group = try await firebaseGroups.getGroupByInviteCode(inviteCode)
+                pendingGroupName = group.name
+                
+                // Now try to join the group (creates join request)
+                let status = try await firebaseGroups.joinGroup(
                     inviteCode: inviteCode,
                     memberName: UIDevice.current.name
                 )
                 
-                joinedGroup = group
-                
-                // Check primary user's trial/subscription status
-                await checkPrimaryUserStatus(group: group)
+                if status == "pending" {
+                    // Show waiting for approval view
+                    await MainActor.run {
+                        isJoining = false
+                        showWaitingForApproval = true
+                    }
+                    return
+                }
                 
             } catch {
                 // Check if this is an "already member" error
@@ -302,6 +343,7 @@ struct CodeDigitDisplay: View {
         Text(digit)
             .font(.monaco(AppTheme.Typography.title))
             .fontWeight(.semibold)
+            .foregroundColor(AppTheme.Colors.textPrimary)
             .frame(width: 50, height: 60)
             .background(Color.white)
             .overlay(
@@ -325,7 +367,10 @@ struct TrialStatusView: View {
     @Environment(\.dismiss) private var dismiss
     
     var daysRemaining: Int {
-        guard let trialEnd = group?.trialEndDate else { return 14 }
+        guard let trialEnd = group?.trialEndDate else { 
+            // If no trial end date, check if group has subscription or return 0
+            return 0
+        }
         return max(0, Calendar.current.dateComponents([.day], from: Date(), to: trialEnd).day ?? 0)
     }
     

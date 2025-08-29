@@ -18,20 +18,22 @@ struct ReadOnlyBanner: View {
                 HStack {
                     Image(systemName: "eye")
                         .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.black)
                     
                     Text("View Only Mode")
                         .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.black)
                     
                     Spacer()
                     
                     Image(systemName: "lock.fill")
                         .font(.system(size: 14))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color.black.opacity(0.6))
                 }
                 
                 Text("You can read but cannot edit any information.")
                     .font(.system(size: 14))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.black.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
             }

@@ -23,6 +23,7 @@ struct FirestoreGroup: Codable, Identifiable {
     var updatedAt: Date
     var trialStartDate: Date?  // Admin's trial start date (shared with all members)
     var trialEndDate: Date?    // Admin's trial end date (shared with all members)
+    var hasActiveSubscription: Bool = false  // Set to true when subscription is purchased
     
     var dictionary: [String: Any] {
         var dict: [String: Any] = [
@@ -34,7 +35,8 @@ struct FirestoreGroup: Codable, Identifiable {
             "memberIds": memberIds,
             "writePermissionIds": writePermissionIds,
             "createdAt": Timestamp(date: createdAt),
-            "updatedAt": Timestamp(date: updatedAt)
+            "updatedAt": Timestamp(date: updatedAt),
+            "hasActiveSubscription": hasActiveSubscription  // Include in dictionary
         ]
         
         if let trialStart = trialStartDate {
@@ -643,7 +645,14 @@ struct FirestoreCareMemo: Codable, Identifiable {
     }
 }
 
-// MARK: - Firestore Conflict
+// MARK: - Pending Join Request
+struct PendingJoinRequest: Identifiable, Equatable {
+    let id: String
+    let userName: String
+    let userId: String
+    let requestedAt: Date
+}
+
 struct FirestoreConflict: Codable, Identifiable {
     var documentId: String?
     let id: String

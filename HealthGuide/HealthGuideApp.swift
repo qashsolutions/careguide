@@ -311,6 +311,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             
             // Also schedule notifications if they haven't been scheduled today
             await MedicationNotificationScheduler.shared.scheduleDailyNotifications()
+            
+            // Initialize Firebase group and start member monitoring if needed
+            await FirebaseGroupService.shared.loadSavedGroup()
         }
     }
     

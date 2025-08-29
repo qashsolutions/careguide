@@ -22,6 +22,7 @@ final class AccessSessionManager: ObservableObject {
     @Published var currentSession: AccessSessionEntity?
     @Published var timeUntilNextAccess: TimeInterval = 0
     @Published var isCheckingAccess: Bool = false
+    @Published var shouldShowPaymentModal: Bool = false
     
     // MARK: - Private Properties
     private let persistenceController = PersistenceController.shared
@@ -183,10 +184,19 @@ final class AccessSessionManager: ObservableObject {
             if let trialState = cloudTrialManager.trialState {
                 print("🎫 Trial access recorded - Day \(trialState.daysUsed) of 14")
                 
-                // Check if should show payment modal
+                // Check if should show payment modal (days 12, 13, 14)
                 if trialState.shouldShowPaymentModal {
-                    print("💳 User should see payment modal")
-                    // UI will handle showing the modal
+                    shouldShowPaymentModal = true
+                    let daysRemaining = trialState.daysRemaining
+                    if daysRemaining == 0 {
+                        print("🚨 DAY 14 - FINAL DAY! Export data immediately!")
+                        print("   ⚠️ Access will be BLOCKED tonight!")
+                    } else if daysRemaining == 1 {
+                        print("⚠️ DAY 13 - Trial expires tomorrow! Export data now!")
+                        print("   Documents, Contacts, Memos will be inaccessible!")
+                    } else if daysRemaining == 2 {
+                        print("⚠️ DAY 12 - Only 2 days left! Start exporting data!")
+                    }
                 }
             }
         }

@@ -67,6 +67,11 @@ struct EnhancedMemberManagementView: View {
             .task {
                 await loadMembers()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .firebaseGroupMembersDidChange)) { _ in
+                Task {
+                    await loadMembers()
+                }
+            }
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {

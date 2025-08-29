@@ -37,6 +37,11 @@ struct ContentView: View {
     @AppStorage("isSecondaryUser") private var isSecondaryUser: Bool = false
     @AppStorage("hasSeenPrivacyNotice") private var hasSeenPrivacyNotice: Bool = false
     
+    // Join request approval for admins
+    @StateObject private var firebaseGroups = FirebaseGroupService.shared
+    @State private var showJoinRequestApproval = false
+    @State private var currentJoinRequest: PendingJoinRequest?
+    
     // Debug counter to track view recreations
     static var appearCount = 0
     
@@ -162,6 +167,18 @@ struct ContentView: View {
                 print("⚠️ [PERF] WARNING: ContentView appeared \(ContentView.appearCount) times - possible view thrashing!")
             }
             
+            // Configure navigation appearance to ensure titles are always black
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = UIColor.systemBackground
+            appearance.titleTextAttributes = [.foregroundColor: UIColor.label]
+            appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.label]
+            
+            UINavigationBar.appearance().standardAppearance = appearance
+            UINavigationBar.appearance().compactAppearance = appearance
+            UINavigationBar.appearance().scrollEdgeAppearance = appearance
+            UINavigationBar.appearance().tintColor = UIColor.label
+            
             // Check if we should show trial status modal
             checkTrialStatusModal()
         }
@@ -181,16 +198,51 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showAccessRevokedModal) {
             AccessRevokedView(message: accessRevokedMessage)
         }
+        .fullScreenCover(item: $currentJoinRequest) { request in
+            JoinRequestApprovalView(request: request)
+                .onDisappear {
+                    // Check if there are more requests after handling this one
+                    checkForNextJoinRequest()
+                }
+        }
+        .onChange(of: firebaseGroups.pendingJoinRequests) { oldValue, newValue in
+            // Show approval modal when new requests come in (admin only)
+            if !newValue.isEmpty && currentJoinRequest == nil {
+                currentJoinRequest = newValue.first
+            }
+        }
+        .task {
+            // Start listening for join requests if admin
+            if firebaseGroups.userIsAdmin {
+                firebaseGroups.startListeningForJoinRequests()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .memberAccessRevoked)) { notification in
             // Handle access revocation
-            if let userInfo = notification.userInfo,
-               let message = userInfo["message"] as? String {
-                accessRevokedMessage = message
+            if let userInfo = notification.userInfo {
+                // Get the message
+                if let message = userInfo["message"] as? String {
+                    accessRevokedMessage = message
+                } else {
+                    accessRevokedMessage = "Your access to this care group has been revoked by the admin."
+                }
+                
+                // Check if this notification is for the current user
+                if let memberId = userInfo["memberId"] as? String,
+                   let currentUserId = Auth.auth().currentUser?.uid {
+                    if memberId == currentUserId {
+                        print("🚫 Current user's access was revoked - showing modal")
+                        showAccessRevokedModal = true
+                        hasCompletedGroupSetup = false
+                    }
+                } else {
+                    // If we can't determine the user, but received the notification, assume it's for us
+                    print("⚠️ Received access revoked notification without clear user match - showing modal")
+                    showAccessRevokedModal = true
+                    hasCompletedGroupSetup = false
+                }
             }
-            showAccessRevokedModal = true
-            
-            // Force re-check of access and group status
-            hasCompletedGroupSetup = false
+            // If memberId doesn't match current user, ignore (admin revoking someone else's access)
         }
         .onReceive(NotificationCenter.default.publisher(for: .firebasePermissionDenied)) { _ in
             // Count permission errors - show modal after a few errors
@@ -205,6 +257,18 @@ struct ContentView: View {
     }
     
     // MARK: - Helper Methods
+    
+    private func checkForNextJoinRequest() {
+        // If there are still pending requests, show the next one
+        if let nextRequest = firebaseGroups.pendingJoinRequests.first(where: { $0.id != currentJoinRequest?.id }) {
+            currentJoinRequest = nextRequest
+        } else if !firebaseGroups.pendingJoinRequests.isEmpty {
+            // If we still have requests but they might be the same, check the first one
+            currentJoinRequest = firebaseGroups.pendingJoinRequests.first
+        } else {
+            currentJoinRequest = nil
+        }
+    }
     
     private func checkTrialStatusModal() {
         // Don't show trial modal if user hasn't completed setup (new users)

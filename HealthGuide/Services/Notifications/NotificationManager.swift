@@ -30,9 +30,12 @@ final class NotificationManager: NSObject, ObservableObject {
     
     // MARK: - Notification Identifiers
     private enum NotificationIdentifier {
-        static let paymentPromptDay5 = "trial.payment.day5"
-        static let trialEndingDay6 = "trial.ending.day6"
-        static let trialExpiredDay7 = "trial.expired.day7"
+        // Updated for 14-day trial
+        static let earlyReminderDay10 = "trial.reminder.day10"
+        static let paymentPromptDay12 = "trial.payment.day12"
+        static let urgentExportDay13 = "trial.export.day13"
+        static let finalWarningDay14 = "trial.final.day14"
+        static let trialExpiredDay14 = "trial.expired.day14"
         static let subscriptionRenewed = "subscription.renewed"
         static let subscriptionExpiring = "subscription.expiring"
         static let medicationPrefix = "medication."
@@ -172,7 +175,7 @@ final class NotificationManager: NSObject, ObservableObject {
     
     // MARK: - Trial Notifications
     
-    /// Schedule all trial notifications when trial starts
+    /// Schedule all trial notifications when trial starts (14-day trial)
     func scheduleTrialNotifications(startDate: Date, endDate: Date) async {
         guard isNotificationEnabled else {
             print("⚠️ Notifications disabled - skipping trial notifications")
@@ -182,29 +185,62 @@ final class NotificationManager: NSObject, ObservableObject {
         // Cancel any existing trial notifications
         cancelTrialNotifications()
         
-        // Day 5: Payment prompt (2 days before trial ends)
-        if let day5 = Calendar.current.date(byAdding: .day, value: 5, to: startDate) {
-            await schedulePaymentPromptReminder(date: day5)
+        // CRITICAL: Updated for 14-day trial (was incorrectly using 7-day logic)
+        
+        // Day 10: First gentle reminder (4 days left)
+        if let day10 = Calendar.current.date(byAdding: .day, value: 10, to: startDate) {
+            await scheduleEarlyTrialReminder(date: day10, daysLeft: 4)
         }
         
-        // Day 6: Trial ending reminder (1 day left)
-        if let day6 = Calendar.current.date(byAdding: .day, value: 6, to: startDate) {
-            await scheduleTrialEndingReminder(date: day6, daysLeft: 1)
+        // Day 12: Payment prompt with export warning (2 days left)
+        if let day12 = Calendar.current.date(byAdding: .day, value: 12, to: startDate) {
+            await schedulePaymentPromptReminder(date: day12)
         }
         
-        // Day 7: Trial expired
+        // Day 13: URGENT - Export your data NOW (1 day left)
+        if let day13 = Calendar.current.date(byAdding: .day, value: 13, to: startDate) {
+            await scheduleUrgentExportReminder(date: day13)
+        }
+        
+        // Day 14 morning: FINAL WARNING - Export immediately
+        if let day14Morning = Calendar.current.date(byAdding: .day, value: 14, to: startDate) {
+            var components = Calendar.current.dateComponents([.year, .month, .day], from: day14Morning)
+            components.hour = 9
+            components.minute = 0
+            if let morningDate = Calendar.current.date(from: components) {
+                await scheduleFinalExportWarning(date: morningDate)
+            }
+        }
+        
+        // Day 14 EOD: Trial expired - Access blocked
         await scheduleTrialExpiryReminder(date: endDate)
     }
     
-    /// Schedule payment prompt reminder (Day 5)
+    /// Schedule early trial reminder (Day 10)
+    func scheduleEarlyTrialReminder(date: Date, daysLeft: Int) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Your Trial Has 4 Days Remaining"
+        content.body = "You have 4 days left in your free trial. Subscribe now to keep unlimited access to all features."
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.trialReminder
+        content.userInfo = ["type": "trial_reminder", "day": 10, "daysLeft": daysLeft]
+        
+        _ = await scheduleNotification(
+            identifier: NotificationIdentifier.earlyReminderDay10,
+            content: content,
+            date: date
+        )
+    }
+    
+    /// Schedule payment prompt reminder (Day 12)
     @discardableResult
     func schedulePaymentPromptReminder(date: Date) async -> Bool {
         let content = UNMutableNotificationContent()
-        content.title = "Add Payment Method"
-        content.body = "Your free trial ends in 2 days. Add payment now to ensure uninterrupted access to all premium features."
+        content.title = "⚠️ Trial Ends in 2 Days - Action Required"
+        content.body = "Your trial ends in 2 days! Subscribe now or EXPORT your data:\n• Documents: Tap (...) → Share\n• Contacts: Screenshot or write down\n• Memos: Save audio files"
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.paymentPrompt
-        content.userInfo = ["type": "payment_prompt", "day": 5]
+        content.userInfo = ["type": "payment_prompt", "day": 12]
         
         // Add image attachment if available
         if let imageURL = Bundle.main.url(forResource: "payment-reminder", withExtension: "png") {
@@ -221,42 +257,64 @@ final class NotificationManager: NSObject, ObservableObject {
         }
         
         return await scheduleNotification(
-            identifier: NotificationIdentifier.paymentPromptDay5,
+            identifier: NotificationIdentifier.paymentPromptDay12,
             content: content,
             date: date
         )
     }
     
-    /// Schedule trial ending reminder
-    func scheduleTrialEndingReminder(date: Date, daysLeft: Int) async {
+    /// Schedule URGENT export reminder (Day 13)
+    func scheduleUrgentExportReminder(date: Date) async {
         let content = UNMutableNotificationContent()
-        content.title = "Trial Ending Soon"
-        content.body = daysLeft == 1 
-            ? "Your free trial ends tomorrow. Subscribe now to keep all your data and unlimited access."
-            : "Your free trial ends in \(daysLeft) days. Don't lose access to premium features."
-        content.sound = .default
-        content.categoryIdentifier = NotificationCategory.trialReminder
-        content.userInfo = ["type": "trial_ending", "daysLeft": daysLeft]
-        
-        _ = await scheduleNotification(
-            identifier: NotificationIdentifier.trialEndingDay6,
-            content: content,
-            date: date
-        )
-    }
-    
-    /// Schedule trial expiry notification
-    func scheduleTrialExpiryReminder(date: Date) async {
-        let content = UNMutableNotificationContent()
-        content.title = "Free Trial Ended"
-        content.body = "Your trial has ended. You now have limited access (once per day). Upgrade to restore full access."
-        content.sound = .default
-        content.categoryIdentifier = NotificationCategory.trialReminder
-        content.userInfo = ["type": "trial_expired"]
+        content.title = "🚨 URGENT: Trial Ends Tomorrow!"
+        content.body = "EXPORT YOUR DATA NOW!\n• Documents will be inaccessible\n• Contacts will be locked\n• Memos cannot be played\nSubscribe or export everything TODAY!"
+        content.sound = .defaultCritical
+        content.categoryIdentifier = NotificationCategory.paymentPrompt
+        content.userInfo = ["type": "urgent_export", "day": 13]
         content.interruptionLevel = .timeSensitive
         
+        _ = await scheduleNotification(
+            identifier: NotificationIdentifier.urgentExportDay13,
+            content: content,
+            date: date
+        )
+    }
+    
+    /// Schedule FINAL export warning (Day 14 morning)
+    func scheduleFinalExportWarning(date: Date) async {
+        let content = UNMutableNotificationContent()
+        content.title = "⛔ FINAL WARNING: Trial Expires Today!"
+        content.body = "You have HOURS left!\n• Export all documents NOW\n• Save contact information\n• Download memo recordings\nAccess will be BLOCKED tonight!"
+        content.sound = .defaultCritical
+        content.categoryIdentifier = NotificationCategory.paymentPrompt
+        content.userInfo = ["type": "final_warning", "day": 14]
+        content.interruptionLevel = .critical
+        
+        _ = await scheduleNotification(
+            identifier: NotificationIdentifier.finalWarningDay14,
+            content: content,
+            date: date
+        )
+    }
+    
+    /// Schedule trial ending reminder - DEPRECATED (kept for backwards compatibility)
+    func scheduleTrialEndingReminder(date: Date, daysLeft: Int) async {
+        // This method is deprecated - we now use specific day reminders
+        // Kept only for backwards compatibility
+    }
+    
+    /// Schedule trial expiry notification (Day 14 EOD)
+    func scheduleTrialExpiryReminder(date: Date) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Trial Expired - Access Blocked"
+        content.body = "Your 14-day trial has ended. Subscribe now to regain access to your data and continue using HealthGuide."
+        content.sound = .defaultCritical
+        content.categoryIdentifier = NotificationCategory.trialReminder
+        content.userInfo = ["type": "trial_expired", "day": 14]
+        content.interruptionLevel = .critical
+        
         await scheduleNotification(
-            identifier: NotificationIdentifier.trialExpiredDay7,
+            identifier: NotificationIdentifier.trialExpiredDay14,
             content: content,
             date: date
         )
@@ -374,9 +432,12 @@ final class NotificationManager: NSObject, ObservableObject {
     /// Cancel all trial-related notifications
     func cancelTrialNotifications() {
         let identifiers = [
-            NotificationIdentifier.paymentPromptDay5,
-            NotificationIdentifier.trialEndingDay6,
-            NotificationIdentifier.trialExpiredDay7
+            // 14-day trial identifiers
+            NotificationIdentifier.earlyReminderDay10,
+            NotificationIdentifier.paymentPromptDay12,
+            NotificationIdentifier.urgentExportDay13,
+            NotificationIdentifier.finalWarningDay14,
+            NotificationIdentifier.trialExpiredDay14
         ]
         
         notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)

@@ -61,10 +61,13 @@ final class CloudTrialManager: ObservableObject {
         }
         
         var shouldShowPaymentModal: Bool {
-            daysRemaining <= 2 && !isExpired
+            // Show modal on days 12, 13, 14 (when 2 or fewer days remain)
+            // Days remaining: 2 = day 12, 1 = day 13, 0 = day 14
+            daysRemaining <= 2 && daysRemaining >= 0
         }
         
         var requiresPayment: Bool {
+            // Hard paywall after day 14 expires
             isExpired
         }
     }

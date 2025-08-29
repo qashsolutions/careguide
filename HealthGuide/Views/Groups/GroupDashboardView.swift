@@ -25,6 +25,8 @@ struct GroupDashboardView: View {
     // Member management states
     @State private var memberNames: [String: String] = [:]
     @State private var memberAccessStates: [String: Bool] = [:]
+    @State private var groupMembers: [FirestoreMember] = []
+    @State private var membersListener: ListenerRegistration?
     @State private var copiedInviteCode = false
     
     // Join group states for existing users
@@ -39,6 +41,30 @@ struct GroupDashboardView: View {
     @State private var isTransitioning = false
     @State private var isEligibleToCreateGroup = true // Default true, will check async
     @State private var cooldownDaysRemaining = 0
+    
+    // Waiting for approval state
+    @State private var hasPendingRequest = false
+    @State private var pendingGroupName: String?
+    
+    // Member access revocation confirmation
+    @State private var showRevokeConfirmation = false
+    @State private var memberToRevoke: String?
+    
+    // Computed properties for dynamic alert
+    private var memberIsCurrentlyEnabled: Bool {
+        guard let memberId = memberToRevoke else { return true }
+        return memberAccessStates[memberId] ?? true
+    }
+    
+    private var accessToggleAlertTitle: String {
+        memberIsCurrentlyEnabled ? "Revoke Access" : "Enable Access"
+    }
+    
+    private var accessToggleAlertMessage: String {
+        memberIsCurrentlyEnabled 
+            ? "Are you sure you want to revoke access?"
+            : "Are you sure you want to enable access?"
+    }
     
     var body: some View {
         NavigationStack {
@@ -85,30 +111,28 @@ struct GroupDashboardView: View {
                 })
                 .environment(\.managedObjectContext, viewContext)
             }
-            .alert("Invite Code Copied!", isPresented: $copiedInviteCode) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("The invite code has been copied to your clipboard")
-            }
-            .tint(Color.blue)  // Force iOS blue color for alert buttons
-            .alert("Error", isPresented: $showJoinError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(joinError ?? "Failed to join group")
-            }
-            .sheet(isPresented: $showTransitionWarning) {
-                MemberTransitionWarningView(
-                    currentGroupName: firebaseGroups.currentGroup?.name ?? "this group",
-                    onConfirm: {
-                        Task {
-                            await viewModel.performMemberToAdminTransition()
-                        }
-                    },
-                    onCancel: {
-                        showTransitionWarning = false
+            .groupAlerts(
+                copiedInviteCode: $copiedInviteCode,
+                showJoinError: $showJoinError,
+                joinError: joinError,
+                showTransitionWarning: $showTransitionWarning,
+                showRevokeConfirmation: $showRevokeConfirmation,
+                accessToggleAlertTitle: accessToggleAlertTitle,
+                accessToggleAlertMessage: accessToggleAlertMessage,
+                memberIsCurrentlyEnabled: memberIsCurrentlyEnabled,
+                memberToRevoke: $memberToRevoke,
+                onTransition: {
+                    Task {
+                        await viewModel.performMemberToAdminTransition()
                     }
-                )
-            }
+                },
+                onCancelTransition: {
+                    showTransitionWarning = false
+                },
+                onPerformAccess: { memberId in
+                    performAccessRevocation(memberId: memberId)
+                }
+            )
             .task {
                 guard !hasLoadedData else {
                     print("🔍 [DEBUG] GroupDashboardView.task - Skipped (already loaded)")
@@ -117,6 +141,15 @@ struct GroupDashboardView: View {
                 print("🔍 [DEBUG] GroupDashboardView.task - Starting (first load)")
                 print("🔍 [DEBUG] hasLoadedData: \(hasLoadedData)")
                 let startTime = Date()
+                
+                // Check if user has a pending join request
+                let (hasPending, groupName) = await firebaseGroups.checkPendingJoinRequest()
+                if hasPending {
+                    hasPendingRequest = true
+                    pendingGroupName = groupName
+                    hasLoadedData = true
+                    return // Don't load groups if waiting for approval
+                }
                 
                 // Load from Core Data first (for any legacy data)
                 await viewModel.loadGroups()
@@ -134,6 +167,11 @@ struct GroupDashboardView: View {
                         // User is a member, check their eligibility
                         await checkCreateGroupEligibility()
                     }
+                    
+                    // Start listening for join requests if admin
+                    if firebaseGroups.userIsAdmin {
+                        firebaseGroups.startListeningForJoinRequests()
+                    }
                 }
                 
                 hasLoadedData = true
@@ -142,13 +180,30 @@ struct GroupDashboardView: View {
             }
             .onAppear {
                 print("🔍 [PERF] GroupDashboardView appeared")
+                
+                // Manual access check for members when view appears
+                if !firebaseGroups.userIsAdmin {
+                    Task {
+                        print("🔍 Performing manual access check for member...")
+                        await firebaseGroups.manualAccessCheck()
+                    }
+                }
             }
             .onDisappear {
                 print("🔍 [PERF] GroupDashboardView disappeared")
+                // Clean up listeners to prevent memory leaks
+                membersListener?.remove()
+                membersListener = nil
             }
             .refreshable {
                 print("🔍 [PERF] GroupDashboardView manual refresh triggered")
                 await viewModel.loadGroups()
+                
+                // Also do manual access check on refresh
+                if !firebaseGroups.userIsAdmin {
+                    print("🔍 Manual refresh: checking member access...")
+                    await firebaseGroups.manualAccessCheck()
+                }
             }
         }
     }
@@ -158,6 +213,9 @@ struct GroupDashboardView: View {
         let _ = print("🔍 [DEBUG] contentView - isLoading: \(viewModel.isLoading), groups.count: \(viewModel.groups.count), hasFirebaseGroup: \(firebaseGroups.currentGroup != nil)")
         if viewModel.isLoading {
             LoadingView(message: AppStrings.Loading.loadingMedications)
+        } else if hasPendingRequest, let groupName = pendingGroupName {
+            // Show waiting for approval view
+            WaitingForApprovalView(groupName: groupName)
         } else if let firebaseGroup = firebaseGroups.currentGroup {
             // Use Firebase group directly if available
             firebaseGroupView(firebaseGroup)
@@ -201,15 +259,28 @@ struct GroupDashboardView: View {
     // Display Firebase group directly when Core Data is empty but Firebase has a group
     private func firebaseGroupView(_ group: FirestoreGroup) -> some View {
         let isAdmin = firebaseGroups.userIsAdmin
-        _ = Auth.auth().currentUser?.uid
+        let userId = Auth.auth().currentUser?.uid
         
-        return VStack {
+        // Check if user is still a member of this group
+        let isStillMember = userId != nil && (group.memberIds.contains(userId!) || group.adminIds.contains(userId!))
+        
+        // If user is no longer a member, clear the cached group and show empty state
+        if !isStillMember {
+            // Clear the cached group since user no longer has access
+            Task {
+                await firebaseGroups.clearCurrentGroup()
+            }
+            return AnyView(emptyStateView)
+        }
+        
+        return AnyView(VStack {
             ScrollView {
                 VStack(spacing: AppTheme.Spacing.medium) {
                     if isAdmin {
                         // Admin sees full group management
                         FirebaseGroupCardView(
                             firebaseGroup: group,
+                            groupMembers: groupMembers,
                             memberNames: $memberNames,
                             memberAccessStates: $memberAccessStates,
                             onCopyCode: { copyInviteCode(group.inviteCode) },
@@ -286,7 +357,7 @@ struct GroupDashboardView: View {
             }
             .padding(.horizontal, AppTheme.Spacing.screenPadding)
             .padding(.bottom, AppTheme.Spacing.large)
-        }
+        })
     }
     
     private func handleGroupTap(_ group: CareGroupEntity, isActive: Bool) {
@@ -341,6 +412,12 @@ struct GroupDashboardView: View {
     }
     
     private func toggleMemberAccess(memberId: String) {
+        // Store the member ID and show confirmation dialog
+        memberToRevoke = memberId
+        showRevokeConfirmation = true
+    }
+    
+    private func performAccessRevocation(memberId: String) {
         guard let group = firebaseGroups.currentGroup else { return }
         
         let currentState = memberAccessStates[memberId] ?? true
@@ -353,6 +430,7 @@ struct GroupDashboardView: View {
                     isEnabled: !currentState
                 )
                 memberAccessStates[memberId] = !currentState
+                memberToRevoke = nil
             } catch {
                 print("Failed to toggle member access: \(error)")
             }
@@ -366,34 +444,55 @@ struct GroupDashboardView: View {
             // Get user's transition tracking data
             let userDoc = try await Firestore.firestore().collection("users").document(userId).getDocument()
             
-            if let data = userDoc.data() {
-                let transitionCount = data["transitionCount"] as? Int ?? 0
-                let lastTransitionAt = (data["lastTransitionAt"] as? Timestamp)?.dateValue()
+            if userDoc.exists, let data = userDoc.data() {
+                // Check new cooldown fields that match server rules
+                let canCreate = data["canCreateGroup"] as? Bool ?? true
+                let cooldownEndDate = (data["cooldownEndDate"] as? Timestamp)?.dateValue()
+                let currentRole = data["currentRole"] as? String
                 
-                // Check cooldown (30 days)
-                if let lastTransition = lastTransitionAt {
-                    let daysSinceLastTransition = Calendar.current.dateComponents([.day], from: lastTransition, to: Date()).day ?? 0
-                    if daysSinceLastTransition < 30 {
-                        isEligibleToCreateGroup = false
-                        cooldownDaysRemaining = 30 - daysSinceLastTransition
-                        AppLogger.main.info("⏳ User in cooldown: \(cooldownDaysRemaining) days remaining")
+                if !canCreate {
+                    if let cooldownEnd = cooldownEndDate {
+                        if Date() < cooldownEnd {
+                            // Still in cooldown
+                            isEligibleToCreateGroup = false
+                            cooldownDaysRemaining = Calendar.current.dateComponents([.day], from: Date(), to: cooldownEnd).day ?? 0
+                            AppLogger.main.info("⏳ User in cooldown until: \(cooldownEnd)")
+                            AppLogger.main.info("   Days remaining: \(cooldownDaysRemaining)")
+                            AppLogger.main.info("   Current role: \(currentRole ?? "unknown")")
+                        } else {
+                            // Cooldown expired
+                            isEligibleToCreateGroup = true
+                            cooldownDaysRemaining = 0
+                            
+                            // Update Firestore to mark cooldown as expired
+                            try await Firestore.firestore().collection("users").document(userId).updateData([
+                                "canCreateGroup": true,
+                                "updatedAt": FieldValue.serverTimestamp()
+                            ])
+                            AppLogger.main.info("✅ Cooldown expired, user can now create groups")
+                        }
                     } else {
-                        isEligibleToCreateGroup = true
+                        // No cooldown date but can't create
+                        isEligibleToCreateGroup = false
+                        cooldownDaysRemaining = 30
                     }
                 } else {
-                    // No previous transition, eligible
+                    // Can create group
                     isEligibleToCreateGroup = true
+                    cooldownDaysRemaining = 0
                 }
                 
-                // Also check max transitions (3 lifetime)
+                // Also check legacy transition count
+                let transitionCount = data["transitionCount"] as? Int ?? 0
                 if transitionCount >= 3 {
                     isEligibleToCreateGroup = false
                     cooldownDaysRemaining = 999 // Show as permanently restricted
                     AppLogger.main.info("🚫 User has reached maximum transitions")
                 }
             } else {
-                // No tracking data, eligible
+                // No user document = new user, can create group
                 isEligibleToCreateGroup = true
+                cooldownDaysRemaining = 0
             }
         } catch {
             AppLogger.main.error("Failed to check eligibility: \(error)")
@@ -402,31 +501,74 @@ struct GroupDashboardView: View {
         }
     }
     
-    private func loadGroupMembers() async {
-        print("🔍 [DEBUG] loadGroupMembers - Starting")
+    // Swift 6 compliant: Using @MainActor for UI updates
+    @MainActor
+    private func setupMembersListener() {
+        print("🔍 [DEBUG] setupMembersListener - Starting")
+        
+        // Clean up any existing listener
+        membersListener?.remove()
+        
         guard let group = firebaseGroups.currentGroup else {
-            print("🔍 [DEBUG] loadGroupMembers - No current group, returning")
+            print("🔍 [DEBUG] setupMembersListener - No current group")
             return
         }
-        print("🔍 [DEBUG] loadGroupMembers - Current group: \(group.name)")
         
-        do {
-            print("🔍 [DEBUG] loadGroupMembers - Fetching members for group: \(group.id)")
-            let members = try await firebaseGroups.fetchGroupMembers(groupId: group.id)
-            print("🔍 [DEBUG] loadGroupMembers - Fetched \(members.count) members")
-            
-            // Initialize member states
-            for member in members {
-                if memberNames[member.userId] == nil {
-                    memberNames[member.userId] = member.displayName ?? member.name
+        print("🔍 [DEBUG] Setting up real-time listener for members of group: \(group.id)")
+        
+        // Set up real-time listener for members subcollection
+        membersListener = Firestore.firestore()
+            .collection("groups")
+            .document(group.id)
+            .collection("members")
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("❌ Members listener error: \(error)")
+                    return
                 }
-                memberAccessStates[member.userId] = member.isAccessEnabled
+                
+                guard let snapshot = snapshot else { return }
+                
+                // Convert documents to FirestoreMember objects
+                let members = snapshot.documents.compactMap { doc -> FirestoreMember? in
+                    let data = doc.data()
+                    var member = FirestoreMember(
+                        id: data["id"] as? String ?? "",
+                        userId: data["userId"] as? String ?? "",
+                        groupId: data["groupId"] as? String ?? "",
+                        name: data["name"] as? String ?? "Unknown",
+                        displayName: data["displayName"] as? String,
+                        role: data["role"] as? String ?? "member",
+                        permissions: data["permissions"] as? String ?? "read",
+                        isAccessEnabled: data["isAccessEnabled"] as? Bool ?? true,
+                        joinedAt: (data["joinedAt"] as? Timestamp)?.dateValue() ?? Date()
+                    )
+                    member.documentId = doc.documentID
+                    return member
+                }
+                
+                Task { @MainActor in
+                    self.groupMembers = members
+                    
+                    // Update member states for UI
+                    self.memberNames.removeAll()
+                    self.memberAccessStates.removeAll()
+                    
+                    for member in members {
+                        self.memberNames[member.userId] = member.displayName ?? member.name
+                        self.memberAccessStates[member.userId] = member.isAccessEnabled
+                    }
+                    
+                    print("📱 Members updated via real-time listener: \(members.count) members")
+                }
             }
-            print("🔍 [DEBUG] loadGroupMembers - Member states initialized")
-        } catch {
-            print("❌ [DEBUG] loadGroupMembers - Failed: \(error)")
+    }
+    
+    private func loadGroupMembers() async {
+        // Now just sets up the listener instead of one-time fetch
+        await MainActor.run {
+            setupMembersListener()
         }
-        print("🔍 [DEBUG] loadGroupMembers - Completed")
     }
     
     // MARK: - Join Group Helpers
@@ -449,19 +591,25 @@ struct GroupDashboardView: View {
         
         Task {
             do {
-                // Join the group via Firebase
-                _ = try await firebaseGroups.joinGroup(
+                // Join the group via Firebase (creates join request)
+                let status = try await firebaseGroups.joinGroup(
                     inviteCode: joinInviteCode,
                     memberName: UIDevice.current.name
                 )
                 
-                // Clear the code
-                joinInviteCode = ""
-                isCodeFieldFocused = false
-                
-                // Reload to show the new group
-                hasLoadedData = false
-                await viewModel.loadGroups()
+                if status == "pending" {
+                    // Show pending message
+                    joinError = "Join request sent! Waiting for admin approval."
+                    showJoinError = true
+                    
+                    // Clear the code
+                    joinInviteCode = ""
+                    isCodeFieldFocused = false
+                } else {
+                    // Shouldn't happen with new flow
+                    hasLoadedData = false
+                    await viewModel.loadGroups()
+                }
                 hasLoadedData = true
                 
                 isJoiningGroup = false
@@ -815,11 +963,7 @@ struct ActiveGroupCardView: View {
                     .font(.monaco(AppTheme.ElderTypography.headline))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 
-                if isLoadingMembers {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                } else if groupMembers.filter({ $0.userId != firebaseGroups.currentGroup?.createdBy }).isEmpty {
+                if groupMembers.filter({ $0.userId != firebaseGroups.currentGroup?.createdBy }).isEmpty {
                     // No members yet
                     Text("No members added yet. Share your invite code to add caregivers.")
                         .font(.monaco(AppTheme.ElderTypography.body))
@@ -870,9 +1014,6 @@ struct ActiveGroupCardView: View {
         .padding(AppTheme.Spacing.large)
         .background(AppTheme.Colors.backgroundSecondary)
         .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
-        .task {
-            await loadMembers()
-        }
     }
     
     private func loadMembers() async {
@@ -896,6 +1037,7 @@ struct ActiveGroupCardView: View {
 @available(iOS 18.0, *)
 struct FirebaseGroupCardView: View {
     let firebaseGroup: FirestoreGroup
+    let groupMembers: [FirestoreMember]  // Now passed in from parent with real-time updates
     @Binding var memberNames: [String: String]
     @Binding var memberAccessStates: [String: Bool]
     let onCopyCode: () -> Void
@@ -904,8 +1046,6 @@ struct FirebaseGroupCardView: View {
     let onMemberAccessToggle: (String) -> Void
     
     @StateObject private var firebaseGroups = FirebaseGroupService.shared
-    @State private var groupMembers: [FirestoreMember] = []
-    @State private var isLoadingMembers = true
     
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.large) {
@@ -989,26 +1129,26 @@ struct FirebaseGroupCardView: View {
         .padding(AppTheme.Spacing.large)
         .background(AppTheme.Colors.backgroundSecondary)
         .cornerRadius(AppTheme.Dimensions.cardCornerRadius)
-        .task {
-            await loadMembers()
-        }
         
         // Comprehensive member info text below the card
         VStack(spacing: AppTheme.Spacing.small) {
-            if groupMembers.isEmpty {
-                Text("You can add a total of two members.")
+            // Count only non-admin members
+            let nonAdminMembers = groupMembers.filter { $0.role != "admin" }
+            
+            if nonAdminMembers.isEmpty {
+                Text("You can add up to 2 members to your group.")
                     .font(.monaco(AppTheme.ElderTypography.body))
                     .fontWeight(.medium)
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
-            } else if groupMembers.count == 1 {
-                Text("You can add a total of two members. You have added one.")
+            } else if nonAdminMembers.count == 1 {
+                Text("1 member added. You can add 1 more.")
                     .font(.monaco(AppTheme.ElderTypography.body))
                     .fontWeight(.medium)
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
             } else {
-                Text("You have added two members (maximum reached).")
+                Text("Maximum of 2 members reached (3 total including admin).")
                     .font(.monaco(AppTheme.ElderTypography.body))
                     .fontWeight(.medium)
                     .foregroundColor(AppTheme.Colors.textPrimary)
@@ -1024,22 +1164,6 @@ struct FirebaseGroupCardView: View {
         .padding(.top, AppTheme.Spacing.medium)
     }
     
-    private func loadMembers() async {
-        do {
-            groupMembers = try await firebaseGroups.fetchGroupMembers(groupId: firebaseGroup.id)
-            // Initialize member states
-            for member in groupMembers {
-                if memberNames[member.userId] == nil {
-                    memberNames[member.userId] = member.displayName ?? member.name
-                }
-                memberAccessStates[member.userId] = member.isAccessEnabled
-            }
-            isLoadingMembers = false
-        } catch {
-            print("Failed to load members: \(error)")
-            isLoadingMembers = false
-        }
-    }
 }
 
 // MARK: - Code Digit Box Component
@@ -1052,6 +1176,7 @@ struct CodeDigitBox: View {
         Text(digit)
             .font(.monaco(AppTheme.Typography.title))
             .fontWeight(.semibold)
+            .foregroundColor(AppTheme.Colors.textPrimary)
             .frame(width: 45, height: 55)
             .background(Color.white)
             .overlay(
@@ -1062,6 +1187,91 @@ struct CodeDigitBox: View {
                     )
             )
             .cornerRadius(AppTheme.Dimensions.inputCornerRadius)
+    }
+}
+
+// MARK: - View Modifier for Alerts
+private struct GroupAlertsModifier: ViewModifier {
+    @Binding var copiedInviteCode: Bool
+    @Binding var showJoinError: Bool
+    let joinError: String?
+    @Binding var showTransitionWarning: Bool
+    @Binding var showRevokeConfirmation: Bool
+    let accessToggleAlertTitle: String
+    let accessToggleAlertMessage: String
+    let memberIsCurrentlyEnabled: Bool
+    @Binding var memberToRevoke: String?
+    let onTransition: () -> Void
+    let onCancelTransition: () -> Void
+    let onPerformAccess: (String) -> Void
+    
+    func body(content: Content) -> some View {
+        content
+            .alert("Invite Code Copied!", isPresented: $copiedInviteCode) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("The invite code has been copied to your clipboard")
+            }
+            .tint(.blue)
+            .alert("Error", isPresented: $showJoinError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(joinError ?? "Failed to join group")
+            }
+            .tint(.blue)
+            .sheet(isPresented: $showTransitionWarning) {
+                MemberTransitionWarningView(
+                    currentGroupName: FirebaseGroupService.shared.currentGroup?.name ?? "this group",
+                    onConfirm: onTransition,
+                    onCancel: onCancelTransition
+                )
+            }
+            .alert(accessToggleAlertTitle, isPresented: $showRevokeConfirmation) {
+                Button("Cancel", role: .cancel) { 
+                    memberToRevoke = nil
+                }
+                Button("Yes", role: memberIsCurrentlyEnabled ? .destructive : nil) {
+                    if let memberId = memberToRevoke {
+                        onPerformAccess(memberId)
+                    }
+                }
+            } message: {
+                Text(accessToggleAlertMessage)
+            }
+            .tint(memberIsCurrentlyEnabled ? .red : .blue)
+    }
+}
+
+// Extension to use the modifier
+extension View {
+    func groupAlerts(
+        copiedInviteCode: Binding<Bool>,
+        showJoinError: Binding<Bool>,
+        joinError: String?,
+        showTransitionWarning: Binding<Bool>,
+        showRevokeConfirmation: Binding<Bool>,
+        accessToggleAlertTitle: String,
+        accessToggleAlertMessage: String,
+        memberIsCurrentlyEnabled: Bool,
+        memberToRevoke: Binding<String?>,
+        onTransition: @escaping () -> Void,
+        onCancelTransition: @escaping () -> Void,
+        onPerformAccess: @escaping (String) -> Void
+    ) -> some View {
+        self.modifier(GroupAlertsModifier(
+            copiedInviteCode: copiedInviteCode,
+            showJoinError: showJoinError,
+            joinError: joinError,
+            showTransitionWarning: showTransitionWarning,
+            showRevokeConfirmation: showRevokeConfirmation,
+            accessToggleAlertTitle: accessToggleAlertTitle,
+            accessToggleAlertMessage: accessToggleAlertMessage,
+            memberIsCurrentlyEnabled: memberIsCurrentlyEnabled,
+            memberToRevoke: memberToRevoke,
+            onTransition: onTransition,
+            onCancelTransition: onCancelTransition,
+            onPerformAccess: onPerformAccess
+        ))
     }
 }
 

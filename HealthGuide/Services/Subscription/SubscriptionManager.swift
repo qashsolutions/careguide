@@ -477,6 +477,8 @@ final class SubscriptionManager: ObservableObject {
     
     /// Check Apple subscription status
     private func checkAppleSubscription() async {
+        var foundActiveSubscription = false
+        
         // Check current entitlements
         for await result in StoreKit.Transaction.currentEntitlements {
             do {
@@ -490,11 +492,37 @@ final class SubscriptionManager: ObservableObject {
                         await MainActor.run {
                             self.subscriptionState = .active(expiryDate: expirationDate, autoRenew: willAutoRenew)
                         }
+                        foundActiveSubscription = true
+                        
+                        // Update Firebase to ensure subscription is active
+                        do {
+                            let groupService = FirebaseGroupService.shared
+                            try await groupService.updateGroupSubscriptionStatus(true)
+                        } catch {
+                            print("⚠️ Failed to update Firebase subscription status: \(error)")
+                        }
                         return
                     }
                 }
             } catch {
                 print("❌ Error checking entitlement: \(error)")
+            }
+        }
+        
+        // If we didn't find an active subscription and we previously had one, update Firebase
+        if !foundActiveSubscription {
+            // Check if we previously had a subscription
+            let previousState = subscriptionState
+            if case .active = previousState {
+                // Subscription has expired, update Firebase
+                print("⚠️ Subscription has expired, updating Firebase...")
+                do {
+                    let groupService = FirebaseGroupService.shared
+                    try await groupService.updateGroupSubscriptionStatus(false)
+                    print("✅ Firebase updated: subscription expired")
+                } catch {
+                    print("❌ Failed to update Firebase after subscription expiration: \(error)")
+                }
             }
         }
     }
@@ -767,6 +795,20 @@ final class SubscriptionManager: ObservableObject {
             tracker.recordNewSubscription()
             print("🔄 Checking subscription status...")
             await checkSubscriptionStatus()
+            
+            // CRITICAL: Update Firebase group subscription status
+            print("🔥 Updating Firebase group subscription status...")
+            do {
+                let groupService = FirebaseGroupService.shared
+                try await groupService.updateGroupSubscriptionStatus(true)
+                print("✅ Firebase group subscription status updated successfully")
+            } catch {
+                // Log error but don't fail the purchase
+                print("⚠️ Failed to update Firebase subscription status: \(error)")
+                // The subscription is still valid even if Firebase update fails
+                // Admin can manually update or retry later
+            }
+            
             print("✅ Purchase complete!")
             
         case .userCancelled:
@@ -982,6 +1024,17 @@ final class SubscriptionManager: ObservableObject {
             // If no active subscription found after restore
             if !subscriptionState.isActive {
                 throw SubscriptionError.noActiveSubscriptionFound
+            }
+            
+            // CRITICAL: Update Firebase group subscription status after successful restore
+            print("🔥 Updating Firebase group subscription status after restore...")
+            do {
+                let groupService = FirebaseGroupService.shared
+                try await groupService.updateGroupSubscriptionStatus(true)
+                print("✅ Firebase group subscription status updated after restore")
+            } catch {
+                // Log error but don't fail the restore
+                print("⚠️ Failed to update Firebase subscription status: \(error)")
             }
             
             print("✅ Successfully restored purchases")

@@ -203,6 +203,32 @@ final class FirebaseServiceManager: ObservableObject {
         AppLogger.main.info("🛑 All listeners stopped")
     }
     
+    /// Stop all services and clear cached data (called when access is revoked)
+    func stopAllServices() {
+        AppLogger.main.info("🛑 Stopping all Firebase services and clearing data")
+        
+        // Stop listeners
+        documentsService.stopListening()
+        contactsService.stopListening()
+        memosService.stopListening()
+        
+        // Clear cached data
+        documentsService.documents = []
+        contactsService.contacts = []
+        memosService.memos = []
+        
+        // Clear state
+        activeListeners.removeAll()
+        isInitialized = false
+        areListenersActive = false
+        
+        // Cancel refresh timer
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        
+        AppLogger.main.info("✅ All services stopped and data cleared")
+    }
+    
     // MARK: - Periodic Refresh (Every 3600 seconds)
     
     private func schedulePeriodicRefresh() {

@@ -27,7 +27,9 @@ struct InviteCodeView: View {
     init(mode: GroupMode, onSuccess: (() -> Void)? = nil) {
         self.mode = mode
         self.onSuccess = onSuccess
-        self._viewModel = StateObject(wrappedValue: InviteCodeViewModel(mode: mode))
+        let vm = InviteCodeViewModel(mode: mode)
+        vm.onJoinRequestSent = onSuccess
+        self._viewModel = StateObject(wrappedValue: vm)
     }
     
     enum GroupMode {
@@ -132,6 +134,15 @@ struct InviteCodeView: View {
                     existingGroupToDelete = group
                     showDeleteConfirmation = true
                     viewModel.showExistingGroupWarning = false
+                }
+            }
+            .onChange(of: viewModel.shouldDismiss) { _, shouldDismiss in
+                if shouldDismiss {
+                    if let onSuccess = onSuccess {
+                        onSuccess()
+                    } else {
+                        dismiss()
+                    }
                 }
             }
         }
@@ -266,6 +277,7 @@ struct CodeDigitView: View {
         Text(digit)
             .font(.monaco(AppTheme.Typography.title))
             .fontWeight(AppTheme.Typography.semibold)
+            .foregroundColor(AppTheme.Colors.textPrimary)
             .frame(width: 50, height: 60)
             .background(AppTheme.Colors.backgroundSecondary)
             .overlay(
@@ -293,8 +305,10 @@ final class InviteCodeViewModel: ObservableObject {
     @Published var createdGroup: CareGroup?
     @Published var showExistingGroupWarning = false
     @Published var existingAdminGroup: CareGroup?
+    @Published var shouldDismiss = false
     
     let mode: InviteCodeView.GroupMode
+    var onJoinRequestSent: (() -> Void)?
     private let coreDataManager = CoreDataManager.shared
     private let firebaseGroups = FirebaseGroupService.shared
     
@@ -357,39 +371,33 @@ final class InviteCodeViewModel: ObservableObject {
                 let deviceUUID = UUID(uuidString: deviceID) ?? UUID()
                 let memberName = UserDefaults.standard.string(forKey: "userName") ?? "Member"
                 
-                // Try to join via Firebase (this actually works across Apple IDs!)
+                // Try to join via Firebase (creates join request now)
                 do {
-                    let firestoreGroup = try await firebaseGroups.joinGroup(
+                    let status = try await firebaseGroups.joinGroup(
                         inviteCode: joinCode,
                         memberName: memberName
                     )
                     
-                    print("✅ Joined Firebase group: \(firestoreGroup.name)")
+                    if status == "pending" {
+                        print("📨 Join request sent - waiting for admin approval")
+                        
+                        // Show pending status and trigger dismissal
+                        await MainActor.run {
+                            self.errorMessage = "Join request sent! You'll be notified when the admin approves."
+                            self.showError = true
+                        }
+                        
+                        // Signal to dismiss after showing the message
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            self.shouldDismiss = true
+                            self.onJoinRequestSent?()
+                        }
+                        
+                        return // Don't continue with local group creation
+                    }
                     
-                    // Create local copy of the group
-                    var localGroup = CareGroup(
-                        id: UUID(uuidString: firestoreGroup.id) ?? UUID(),
-                        name: firestoreGroup.name,
-                        adminUserID: UUID(uuidString: firestoreGroup.createdBy) ?? UUID(),
-                        settings: GroupSettings.default
-                    )
-                    localGroup.inviteCode = firestoreGroup.inviteCode
-                    
-                    // Save locally
-                    try await coreDataManager.saveGroup(localGroup)
-                    
-                    // Add member locally
-                    try await coreDataManager.addMemberToGroup(
-                        groupId: localGroup.id,
-                        userId: deviceUUID,
-                        name: memberName,
-                        phone: ""
-                    )
-                    
-                    createdGroup = localGroup
-                    groupCreated = true
-                    
-                    print("✅ Successfully joined group via Firebase - all 3 members can now share data!")
+                    // If we somehow get here with an approved status (shouldn't happen with new flow)
+                    print("⚠️ Unexpected: Direct join succeeded (should be pending)")
                     
                 } catch {
                     // Firebase join failed, try local only (won't work across Apple IDs)

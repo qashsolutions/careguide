@@ -55,11 +55,11 @@ struct TrialStatusModal: View {
         if isExpired {
             return "lock.fill"
         } else if daysRemaining <= 2 {
-            return "exclamationmark.triangle.fill"
+            return "clock.badge.exclamationmark"
         } else if daysRemaining <= 4 {
-            return "exclamationmark.circle.fill"
+            return "calendar.badge.clock"
         } else {
-            return "gift.fill"
+            return "calendar.circle"
         }
     }
     
@@ -77,36 +77,43 @@ struct TrialStatusModal: View {
     
     private var messageText: String {
         if isExpired {
-            return "Your 14-day free trial has ended. Subscribe now to continue using HealthGuide with unlimited access."
+            return "Your 14-day free trial has ended. Subscribe now to regain access to your data and continue using HealthGuide."
+        } else if daysRemaining == 0 {
+            // Day 14 - FINAL DAY
+            return "🚨 FINAL DAY - EXPORT YOUR DATA NOW!\n\n• Documents: Open each → Tap (...) → Share\n• Contacts: Screenshot or write down\n• Memos: Save audio recordings\n\n⚠️ Access will be BLOCKED tonight!"
         } else if daysRemaining == 1 {
-            return "⚠️ Trial expires tomorrow! Export your data now:\n• Documents: Tap (...) → Share\n• Contacts: Screenshot or write down\n• Memos: Save before trial ends"
+            // Day 13 - URGENT
+            return "⚠️ URGENT: Trial expires TOMORROW!\n\nEXPORT YOUR DATA NOW:\n• Documents: Tap (...) → Share to Files/Email\n• Contacts: Take screenshots or export\n• Memos: Save audio files externally\n\nAfter tomorrow, you'll need to pay to access this data!"
         } else if daysRemaining == 2 {
-            return "Only 2 days left! Remember to export important data:\n• Open each document → Tap (...) → Share"
+            // Day 12 - WARNING
+            return "⚠️ Only 2 days left!\n\nIf you don't plan to subscribe, remove all documents, memos and contacts as you will lose them.\n\n• Documents → Open each → Delete\n• Contacts → Delete all\n• Memos → Delete recordings"
         } else if daysRemaining <= 4 {
-            return "4 days left in your trial. After trial ends, you'll need a subscription to access your data.\n\nTo save documents: Open → Tap (...) → Share"
+            return "You have \(daysRemaining) days left in your trial. After trial ends, you'll need a subscription to access your data.\n\nRemember to export important documents before day 14."
         } else {
             return "You're on day \(daysUsed + 1) of your 14-day free trial. Enjoy unlimited access to all features!"
         }
     }
     
     private var dismissable: Bool {
-        // Can't dismiss on day 14+ (hard paywall)
-        !isExpired
+        // Can't dismiss on day 14 or after (hard paywall)
+        // Day 14 = 0 days remaining, must subscribe or lose access
+        daysRemaining > 0 && !isExpired
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag indicator (only if dismissable)
-            if dismissable {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 40, height: 5)
-                    .padding(.top, 8)
-                    .padding(.bottom, 20)
-            }
-            
-            // Icon and Title
-            VStack(spacing: 16) {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Drag indicator (only if dismissable)
+                if dismissable {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 40, height: 5)
+                        .padding(.top, 8)
+                        .padding(.bottom, 20)
+                }
+                
+                // Icon and Title
+                VStack(spacing: 16) {
                 Image(systemName: modalIcon)
                     .font(.system(size: 50))
                     .foregroundColor(modalIconColor)
@@ -318,24 +325,32 @@ struct TrialStatusModal: View {
             .padding(.horizontal)
             .padding(.top, 20)
             
-            // Dismiss button (only if dismissable)
+            
+            // Dismiss button (only if dismissable - NOT on day 14)
             if dismissable {
                 Button(action: {
                     isPresented = false
                 }) {
-                    Text(isLastTwoDays ? "Remind Me Tomorrow" : "Continue Trial")
+                    Text(daysRemaining == 1 ? "I'll Export Tomorrow" : "Continue Trial")
                         .font(.body)
-                        .foregroundColor(isLastTwoDays ? .orange : .blue)
+                        .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
+            } else if daysRemaining == 0 {
+                // Day 14 - Cannot dismiss
+                Text("⚠️ Cannot dismiss - Subscribe or Export Now")
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.top, 12)
             }
             
             // Bottom spacing
             Spacer()
                 .frame(height: 20)
+            }
         }
         .background(Color(UIColor.systemBackground))
         .cornerRadius(20, corners: [.topLeft, .topRight])

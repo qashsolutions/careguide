@@ -97,10 +97,6 @@ final class FirebaseMemosService: ObservableObject {
         
         isSavingMemo = true
         isSyncing = true
-        defer { 
-            isSavingMemo = false
-            isSyncing = false
-        }
         
         let memoId = UUID().uuidString
         
@@ -172,10 +168,16 @@ final class FirebaseMemosService: ObservableObject {
             
             AppLogger.main.info("✅ Memo saved to Firebase with audio")
             
-            // Don't reload - real-time listener will handle it
-            // await loadMemos() - REMOVED to prevent recursive refresh
+            // Reset flags after successful save
+            isSavingMemo = false
+            isSyncing = false
+            
+            // Listener will handle the UI update
         } catch {
             AppLogger.main.error("❌ Failed to save memo: \(error)")
+            // Reset flags on error too
+            isSavingMemo = false
+            isSyncing = false
             throw AppError.firebaseSyncFailed(reason: error.localizedDescription)
         }
     }
@@ -203,10 +205,6 @@ final class FirebaseMemosService: ObservableObject {
         
         isDeletingMemo = true
         isSyncing = true
-        defer { 
-            isDeletingMemo = false
-            isSyncing = false
-        }
         
         do {
             // Get memo to find audio URL
@@ -235,10 +233,16 @@ final class FirebaseMemosService: ObservableObject {
             
             AppLogger.main.info("✅ Memo deleted from Firebase")
             
-            // Don't reload - real-time listener will handle it  
-            // await loadMemos() - REMOVED to prevent recursive refresh
+            // Reset flags after successful delete
+            isDeletingMemo = false
+            isSyncing = false
+            
+            // Listener will handle the UI update
         } catch {
             AppLogger.main.error("❌ Failed to delete memo: \(error)")
+            // Reset flags on error too
+            isDeletingMemo = false
+            isSyncing = false
             throw AppError.firebaseSyncFailed(reason: error.localizedDescription)
         }
     }
@@ -348,6 +352,14 @@ final class FirebaseMemosService: ObservableObject {
             return
         }
         
+        // Check if user is still a member of the group
+        guard let userId = Auth.auth().currentUser?.uid,
+              group.memberIds.contains(userId) else {
+            AppLogger.main.warning("🚫 User not authorized to access memos")
+            memos = []  // Clear any cached data
+            return
+        }
+        
         // Setup real-time listener
         memosListener = db.collection("groups")
             .document(group.id)
@@ -393,12 +405,7 @@ final class FirebaseMemosService: ObservableObject {
                         return
                     }
                     
-                    // Safety: Don't update if we're in the middle of saving/deleting
-                    if self.isSavingMemo || self.isDeletingMemo {
-                        AppLogger.main.debug("⏭️ Skipping listener update during save/delete operation")
-                        return
-                    }
-                    
+                    // Update memos immediately - flags are properly managed now
                     self.memos = loadedMemos
                     self.lastListenerUpdate = Date()
                     if !snapshot.metadata.isFromCache {
