@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CareGuide Privacy Policy & Terms</title>
+    <title>Careguide app: Privacy Policy & Terms</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
@@ -122,15 +122,12 @@
     </style>
 </head>
 <body>
-    <h1>CareGuide Privacy Policy & Terms of Service</h1>
-    <p class="date"><strong>Last Updated:</strong> August 27, 2025</p>
+    <h1>Privacy Policy & Terms of Service</h1>
+    <p class="date"><strong>Last Updated:</strong>September 15, 2025</p>
     
     <div class="highlight">
         <p><strong>Your Privacy is Our Priority</strong></p>
-        <p>CareGuide is designed with privacy at its core. We do not collect, store, or share any personal information. 
-            All your health data stays on your device. It is stored anonymously on our serves so you can share in your group. 
-            Should you ever lose access to this data, there is no way for us to recover it.
-            By using the app, you agree to these terms and privacy practices.</p>
+        <p>Careguide is designed with privacy at its core. Your health data is stored securely using Firebase services with your encrypted phone number as the identifier. Only you and group members you invite can access your data. We cannot access or recover your personal health information.</p>
     </div>
 
     <div class="toc">
@@ -145,115 +142,117 @@
     <div id="privacy">
         <h2>PRIVACY POLICY</h2>
 
-        <h3>Information We Do NOT Collect</h3>
-        <p>CareGuide does NOT collect:</p>
+        <h3>How Your Data is Stored</h3>
+        <p>All your health data is stored securely using Google Firebase services. Your phone number is encrypted (hashed) and used as an anonymous identifier. This allows you to:</p>
         <ul>
-            <li><span class="cross">❌</span> Personal information (name, email, phone number)</li>
-            <li><span class="cross">❌</span> Identifiable Health records or medical data on servers</li>
-            <li><span class="cross">❌</span> Location data or GPS coordinates</li>
-            <li><span class="cross">❌</span> Analytics or usage statistics</li>
-            <li><span class="cross">❌</span> Advertising identifiers or tracking data</li>
-            <li><span class="cross">❌</span> Contact lists or address books</li>
-            <li><span class="cross">❌</span> Photos or documents to cloud servers</li>
+            <li>Access your data from any device after phone verification</li>
+            <li>Share data with the member you invite</li>
+            <li>Keep your data private - we cannot see or access it</li>
+        </ul>
+        
+        <h3>What Information We Store</h3>
+        <p>We only store health information you choose to enter:</p>
+        <ul>
+            <li>Medications, dosages, and schedules</li>
+            <li>Healthcare provider contacts</li>
+            <li>Appointment information</li>
+            <li>Health documents you upload</li>
+            <li>Audio memos you record</li>
         </ul>
 
-        <h3>How Your Data is Stored</h3>
-        <h4>100% Local Storage:</h4>
-        <p>All data remains exclusively on your iPhone:</p>
+        <h3>Firebase Services Used</h3>
+        <p>We use these Google Firebase services to securely store and sync your data:</p>
         <ul>
-            <li><span class="checkmark">✅</span> Medications and schedules - Stored in local database</li>
-            <li><span class="checkmark">✅</span> Completely anonymized Healthcare contacts - Saved locally only</li>
-            <li><span class="checkmark">✅</span> Completely anonymized Audio memos - Recorded and kept on device</li>
-            <li><span class="checkmark">✅</span> Completely anonymized Document scans - Stored in app's local storage</li>
-            <li><span class="checkmark">✅</span> Completely anonymized Group codes - Generated locally, expire in 24 hours</li>
+            <li><strong>Firebase Authentication:</strong> Phone number verification using OTP</li>
+            <li><strong>Firebase Firestore:</strong> Secure database storage</li>
+            <li><strong>Firebase Storage:</strong> Voice Memo, Document and Image storage</li>
         </ul>
-        <h3>Apple CareKit Framework</h3>
-        <p>CareGuide uses Apple's CareKit framework for medication scheduling, care plan management, and health tracking features. 
-            All CareKit data is stored locally on your device and never transmitted to our servers or shared with third parties.</p>
+        <p>All Firebase data is encrypted and tied to your hashed phone number, not your personal identity.</p>
         
         <h3>Device Permissions</h3>
-        <p>CareGuide requests certain permissions to function. Here's exactly how we use them:</p>
+        <p>Careguide requests these permissions to function:</p>
         
         <h4>Camera</h4>
         <ul>
-            <li>Used ONLY to scan medical documents</li>
-            <li>Photos are saved locally in your device's app storage</li>
-            <li>Never uploaded to any server</li>
-            <li>You control when camera is accessed</li>
+            <li>Used to scan medical documents</li>
+            <li>Photos are uploaded to secure Firebase storage</li>
+            <li>Only accessible by you and invited group members</li>
+        </ul>
+
+        <h4>Photo Library</h4>
+        <ul>
+            <li>Used to save and retrieve medication images</li>
+            <li>Access controlled by iOS permissions</li>
         </ul>
 
         <h4>Microphone</h4>
         <ul>
-            <li>Used ONLY for recording care memos</li>
-            <li>Limited to 60-second recordings</li>
-            <li>Maximum 10 memos stored locally</li>
-            <li>Audio never leaves your device</li>
+            <li>Used for recording care memos</li>
+            <li>Audio stored securely in Firebase</li>
+            <li>Only you and group members can access</li>
         </ul>
 
-        <h4>Face ID/Touch ID</h4>
+        <h4>Contacts</h4>
         <ul>
-            <li>Used for secure app access</li>
-            <li>Biometric data stays in iPhone's Secure Enclave</li>
-            <li>We cannot access your biometric information</li>
-            <li>Optional - you can use passcode instead</li>
+            <li>Used to add healthcare providers to your contact list</li>
+            <li>Contact information stays in your device's contact app</li>
+            <li>No contact data sent to our servers</li>
         </ul>
+
 
         <h4>Notifications</h4>
         <ul>
-            <li>Used for medication reminders only</li>
-            <li>All notifications are scheduled locally</li>
-            <li>No push notifications from servers</li>
-            <li>You control notification settings</li>
+            <li>Used for medication and appointment reminders</li>
+            <li>Scheduled locally on your device</li>
+            <li>You control all notification settings</li>
+        </ul>
+
+        <h3>Family Groups</h3>
+        <ul>
+            <li>Groups are created with 6-character invite codes</li>
+            <li>Maximum 2 members per group (1 admin + 1 member)</li>
+            <li>Group data shared securely through Firebase</li>
+            <li>Admin controls member access</li>
+            <li>Members can view but not edit group data</li>
         </ul>
 
         <h3>Data Security</h3>
         <ul>
-            <li><strong>Encryption:</strong> iOS automatically encrypts app data when device is locked</li>
-            <li><strong>Face ID Protection:</strong> App requires authentication to access</li>
-            <li><strong>No Network Transmission:</strong> Health data never sent over internet</li>
-            <li><strong>Local Only:</strong> All processing happens on your device</li>
-        </ul>
-
-        <h3>Family Groups - Optional Feature</h3>
-        <ul>
-            <li>Groups are created with 6-character codes</li>
-            <li>Codes expire after 24 hours for security</li>
-            <li>Maximum 3 members per group</li>
-            <li>No data is shared between devices</li>
-            <li>Group codes are for invitation only</li>
+            <li><strong>Firebase Security:</strong> Google's enterprise-grade encryption</li>
+            <li><strong>Phone Number Hashing:</strong> Your number is encrypted before storage</li>
+            <li><strong>No Personal Identifiers:</strong> No names, emails, or addresses stored</li>
+            <li><strong>Access Control:</strong> Only you can access your data via phone verification</li>
         </ul>
 
         <h3>Third-Party Services</h3>
-        <p>We use NO third-party services:</p>
+        <p>We only use Google Firebase services:</p>
         <ul>
-            <li><span class="cross">❌</span> No analytics (Google Analytics, Firebase, etc.)</li>
-            <li><span class="cross">❌</span> No crash reporting services</li>
+            <li><span class="checkmark">✅</span> Firebase Authentication, Firestore, Storage</li>
             <li><span class="cross">❌</span> No advertising networks</li>
             <li><span class="cross">❌</span> No social media integrations</li>
+            <li><span class="cross">❌</span> No analytics or tracking services</li>
             <li><span class="cross">❌</span> No AI or machine learning services</li>
-            <li><span class="cross">❌</span> No cloud storage providers</li>
         </ul>
 
         <h3>Data Deletion</h3>
         <p>You have complete control over your data:</p>
         <ul>
             <li>Delete individual items anytime within the app</li>
-            <li>Uninstalling the app removes ALL data permanently</li>
-            <li>No data remains after app deletion</li>
-            <li>We cannot recover deleted data (we never had it)</li>
+            <li>Leave groups to stop sharing data</li>
+            <li>Contact us to delete all your data permanently</li>
+            <li>Uninstalling the app stops new data sync but doesn't delete stored data</li>
         </ul>
 
         <h3>Children's Privacy</h3>
-        <p>CareGuide is designed for adult caregivers managing healthcare. We do not knowingly collect information from children under 13. The app requires Face ID/Touch ID authentication typically available to device owners.</p>
+        <p>Careguide is designed for adults managing healthcare. We do not knowingly collect information from children under 13.</p>
 
         <h3>Your Privacy Rights</h3>
-        <p>You always have the right to:</p>
+        <p>You have the right to:</p>
         <ul>
-            <li><span class="checkmark">✅</span> Access all your data (it's on your device)</li>
+            <li><span class="checkmark">✅</span> Access all your stored data</li>
             <li><span class="checkmark">✅</span> Delete any or all data</li>
-            <li><span class="checkmark">✅</span> Export your data (future feature)</li>
-            <li><span class="checkmark">✅</span> Opt-out of any feature</li>
-            <li><span class="checkmark">✅</span> Use the app without providing personal info</li>
+            <li><span class="checkmark">✅</span> Control who can access your group data</li>
+            <li><span class="checkmark">✅</span> Use the app with minimal data sharing</li>
         </ul>
     </div>
 
@@ -262,36 +261,35 @@
 
         <div class="warning">
             <h3>Medical Disclaimer</h3>
-            <p><strong>CareGuide is NOT a medical device.</strong> It does not provide medical advice, diagnosis, or treatment. Always consult healthcare professionals for medical decisions. The App is a scheduling and reminder tool only.</p>
+            <p><strong>Careguide is NOT a medical device.</strong> It does not provide medical advice, diagnosis, or treatment. Always consult healthcare professionals for medical decisions. The app is a tracking and reminder tool only.</p>
         </div>
 
         <h3>Acceptance of Terms</h3>
-        <p>By downloading, installing, or using CareGuide, you agree to these Terms of Service and Privacy Policy. If you don't agree, please don't use the App.</p>
+        <p>By downloading, installing, or using HealthGuide, you agree to these Terms of Service and Privacy Policy. If you don't agree, please don't use the app.</p>
 
         <h3>User Eligibility</h3>
         <ul>
-            <li>You must be at least 18 years old to use CareGuide</li>
-            <li>You must own or have permission to use the device</li>
-            <li>You are responsible for maintaining device security</li>
+            <li>You must be at least 18 years old to use Careguide</li>
+            <li>You must have a valid phone number for verification</li>
+            <li>You are responsible for keeping your phone number secure</li>
         </ul>
 
         <h3>App Features</h3>
-        <p>CareGuide provides:</p>
+        <p>Careguide provides:</p>
         <ul>
             <li>Medication scheduling and reminders</li>
-            <li>Health information tracking (supplements, diet)</li>
             <li>Healthcare contact management</li>
-            <li>Audio memo recording for care notes</li>
             <li>Document scanning and storage</li>
-            <li>Optional family group sharing via invite codes</li>
+            <li>Audio memo recording</li>
+            <li>Family group sharing via invite codes</li>
         </ul>
 
         <h3>Authentication</h3>
         <ul>
-            <li>No account creation required</li>
-            <li>Authentication via Face ID/Touch ID only</li>
-            <li>You are responsible for maintaining device passcode security</li>
-            <li>We cannot recover lost data if you lose device access</li>
+            <li>Authentication via phone number and OTP verification</li>
+            <li>No email or password required</li>
+            <li>You are responsible for maintaining phone number access</li>
+            <li>Lost phone number access may result in data loss</li>
         </ul>
 
         <h3>Subscription Terms</h3>
@@ -307,7 +305,7 @@
             <ul>
                 <li><strong>Price:</strong> $8.99 per month</li>
                 <li><strong>Billing:</strong> Charged monthly to your Apple ID</li>
-                <li><strong>Auto-Renewal:</strong> Automatically renews unless canceled 24 hours before period ends</li>
+                <li><strong>Auto-Renewal:</strong> Subscriptions automatically renew unless canceled at least 24 hours before the end of the current period. Cancel anytime in Settings.</li>
                 <li><strong>Management:</strong> Manage subscriptions in iPhone Settings > Apple ID > Subscriptions</li>
             </ul>
         </div>
@@ -316,72 +314,60 @@
         
         <h4>You agree to:</h4>
         <ul>
-            <li><span class="checkmark">✅</span> Use the App only for personal health management</li>
-            <li><span class="checkmark">✅</span> Enter accurate medication information</li>
-            <li><span class="checkmark">✅</span> Respect the privacy of family group members</li>
-            <li><span class="checkmark">✅</span> Use the App lawfully and ethically</li>
+            <li><span class="checkmark">✅</span> Use the app only for personal health management</li>
+            <li><span class="checkmark">✅</span> Enter accurate health information</li>
+            <li><span class="checkmark">✅</span> Respect the privacy of group members</li>
+            <li><span class="checkmark">✅</span> Use the app lawfully and ethically</li>
         </ul>
 
         <h4>You agree NOT to:</h4>
         <ul>
-            <li><span class="cross">❌</span> Use the App for commercial purposes</li>
             <li><span class="cross">❌</span> Share prescription medications illegally</li>
+            <li><span class="cross">❌</span> Use the app for commercial purposes</li>
             <li><span class="cross">❌</span> Impersonate healthcare providers</li>
-            <li><span class="cross">❌</span> Attempt to reverse engineer the App</li>
-            <li><span class="cross">❌</span> Use the App to harm yourself or others</li>
+            <li><span class="cross">❌</span> Attempt to access other users' data</li>
         </ul>
 
         <h3>Data Ownership</h3>
         <ul>
-            <li>All data is stored locally on your device</li>
-            <li>You own all data you enter into the App</li>
-            <li>We have no access to your data</li>
-            <li>Deleting the App permanently removes all data</li>
-            <li>You are responsible for backing up your device</li>
-        </ul>
-
-        <h3>App Availability & Updates</h3>
-        <ul>
-            <li>The App is provided "as is" and "as available"</li>
-            <li>We don't guarantee uninterrupted or error-free operation</li>
-            <li>Features may change with updates</li>
-            <li>iOS updates may affect app functionality</li>
+            <li>You own all health data you enter into the app</li>
+            <li>Data is stored securely in Firebase with your consent</li>
+            <li>You can request data deletion at any time</li>
+            <li>Shared group data is accessible to invited members only</li>
         </ul>
 
         <h3>User Responsibilities</h3>
         <p>You are responsible for:</p>
         <ul>
-            <li>Entering correct medication names and dosages</li>
+            <li>Entering correct medication information</li>
             <li>Verifying all health information accuracy</li>
             <li>Following healthcare provider instructions</li>
-            <li>Double-checking critical health decisions</li>
+            <li>Maintaining secure access to your phone number</li>
         </ul>
 
         <div class="legal-notice">
             <h3>Limitation of Liability</h3>
             <p><strong>TO THE MAXIMUM EXTENT PERMITTED BY LAW:</strong></p>
             <ul>
-                <li>We are not liable for any indirect, incidental, or consequential damages</li>
-                <li>We are not liable for missed medications or health issues</li>
-                <li>We are not liable for data loss due to device issues</li>
+                <li>We are not liable for any health-related decisions or outcomes</li>
+                <li>We are not liable for missed medications or appointments</li>
+                <li>We are not liable for data loss due to device or service issues</li>
                 <li>Our maximum liability is limited to the subscription amount paid</li>
             </ul>
         </div>
 
         <h3>Termination</h3>
-        <p>You may stop using the App at any time by:</p>
+        <p>You may stop using the app at any time by:</p>
         <ul>
-            <li>Canceling your subscription</li>
-            <li>Deleting the App from your device</li>
+            <li>Canceling your subscription in Phone Settings</li>
+            <li>Deleting the app from your device</li>
         </ul>
-        <p>We may terminate access if you violate these Terms.</p>
 
         <h3>Changes to Terms</h3>
         <ul>
             <li>We may update these Terms occasionally</li>
-            <li>Updates will be posted with new Effective Date</li>
+            <li>Updates will be posted with new effective date</li>
             <li>Continued use after changes means acceptance</li>
-            <li>Major changes will be announced in app updates</li>
         </ul>
 
         <h3>Governing Law</h3>
@@ -392,12 +378,12 @@
         <h2>Contact Information</h2>
         <p>For questions about these Terms or Privacy Policy:</p>
         <p><strong>Email:</strong> admin@myguide.health</p>
-        <p><strong>Response Time:</strong> Within 48 hours</p>
+        <p><strong>Response Time:</strong> Within three to five business days</p>
     </div>
 
     <div class="promise">
         <h2>Our Promise</h2>
-        <p>CareGuide will always prioritize your privacy. We believe your health data belongs to you alone, and it should stay that way. Thank you for trusting CareGuide to help manage health information.</p>
+        <p>HealthGuide prioritizes your privacy and data security. We use Firebase's secure infrastructure to protect your health information while enabling helpful group sharing features. Your data belongs to you, and you control who can access it.We have no way to identify you or any of your data since your mobile number is stored in encrypted format.</p>
     </div>
 
     <div class="footer">
