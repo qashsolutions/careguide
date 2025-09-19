@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Careguide app: Privacy Policy & Terms</title>
+    <title>Careguide Privacy Policy & Terms</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
@@ -122,8 +122,8 @@
     </style>
 </head>
 <body>
-    <h1>Privacy Policy & Terms of Service</h1>
-    <p class="date"><strong>Last Updated:</strong>September 15, 2025</p>
+    <h1>Careguide Privacy Policy & Terms of Service</h1>
+    <p class="date"><strong>Last Updated:</strong> September 18, 2025</p>
     
     <div class="highlight">
         <p><strong>Your Privacy is Our Priority</strong></p>
@@ -146,7 +146,7 @@
         <p>All your health data is stored securely using Google Firebase services. Your phone number is encrypted (hashed) and used as an anonymous identifier. This allows you to:</p>
         <ul>
             <li>Access your data from any device after phone verification</li>
-            <li>Share data with the member you invite</li>
+            <li>Share data with group members you invite</li>
             <li>Keep your data private - we cannot see or access it</li>
         </ul>
         
@@ -155,9 +155,10 @@
         <ul>
             <li>Medications, dosages, and schedules</li>
             <li>Healthcare provider contacts</li>
+            <li>Healthcare provider contact information when you choose to add them to your device contacts</li>
             <li>Appointment information</li>
             <li>Health documents you upload</li>
-            <li>Audio memos you record</li>
+            <li>Audio memos you record (up to 10 memos, 1 minute each)</li>
         </ul>
 
         <h3>Firebase Services Used</h3>
@@ -165,7 +166,7 @@
         <ul>
             <li><strong>Firebase Authentication:</strong> Phone number verification using OTP</li>
             <li><strong>Firebase Firestore:</strong> Secure database storage</li>
-            <li><strong>Firebase Storage:</strong> Voice Memo, Document and Image storage</li>
+            <li><strong>Firebase Storage:</strong> Document and image storage</li>
         </ul>
         <p>All Firebase data is encrypted and tied to your hashed phone number, not your personal identity.</p>
         
@@ -181,7 +182,7 @@
 
         <h4>Photo Library</h4>
         <ul>
-            <li>Used to save and retrieve medication images</li>
+            <li>Used to save and retrieve medication images and health documents. Access controlled by iOS permissions.</li>
             <li>Access controlled by iOS permissions</li>
         </ul>
 
@@ -196,9 +197,14 @@
         <ul>
             <li>Used to add healthcare providers to your contact list</li>
             <li>Contact information stays in your device's contact app</li>
-            <li>No contact data sent to our servers</li>
+            <li>It is stored in our database against your encrypted account and only accessible to you or any member you add. Members will only have read permissions</li>
         </ul>
 
+
+        <h4>Identifiers</h4>
+        <ul>
+            <li>Used for Firebase authentication and secure data storage</li>
+        </ul>
 
         <h4>Notifications</h4>
         <ul>
@@ -224,6 +230,9 @@
             <li><strong>Access Control:</strong> Only you can access your data via phone verification</li>
         </ul>
 
+        <h3>Data Retention</h3>
+        <p>We retain your data for as long as you maintain an active account. When you delete items within the app, they are permanently deleted and cannot be accessed by anyone</p>
+
         <h3>Third-Party Services</h3>
         <p>We only use Google Firebase services:</p>
         <ul>
@@ -244,7 +253,7 @@
         </ul>
 
         <h3>Children's Privacy</h3>
-        <p>Careguide is designed for adults managing healthcare. We do not knowingly collect information from children under 13.</p>
+        <p>Careguide is designed for caregivers managing elders.We do not knowingly collect information from children under 13.</p>
 
         <h3>Your Privacy Rights</h3>
         <p>You have the right to:</p>
@@ -277,11 +286,11 @@
         <h3>App Features</h3>
         <p>Careguide provides:</p>
         <ul>
-            <li>Scheduling and reminders</li>
-            <li>Contacts</li>
-            <li>Documents scanning & storage</li>
+            <li>Medication scheduling and reminders</li>
+            <li>Healthcare contact management</li>
+            <li>Document scanning and storage</li>
             <li>Audio memo recording</li>
-            <li>Group sharing via invite codes</li>
+            <li>Family group sharing via invite codes</li>
         </ul>
 
         <h3>Authentication</h3>
@@ -355,16 +364,13 @@
                 <li>Our maximum liability is limited to the subscription amount paid</li>
             </ul>
         </div>
-        <h3>Health Framework Disclosure</h3>
-        <p>
-        This Careguide app does not use Apple's HealthKit or CareKit frameworks. 
-        No health data is accessed through Apple's health APIs. 
-        All information is stored securely through Firebase services with user consent.</p>
+
         <h3>Termination</h3>
         <p>You may stop using the app at any time by:</p>
         <ul>
-            <li>Canceling your subscription in Phone Settings</li>
+            <li>Canceling your subscription in iPhone Settings</li>
             <li>Deleting the app from your device</li>
+            <li>Requesting permanent data deletion</li>
         </ul>
 
         <h3>Changes to Terms</h3>
@@ -382,12 +388,12 @@
         <h2>Contact Information</h2>
         <p>For questions about these Terms or Privacy Policy:</p>
         <p><strong>Email:</strong> admin@myguide.health</p>
-        <p><strong>Response Time:</strong> Within three to five business days</p>
+        <p><strong>Response Time:</strong> Within 48 hours</p>
     </div>
 
     <div class="promise">
         <h2>Our Promise</h2>
-        <p>Careguide prioritizes your privacy and data security. We use Firebase's secure infrastructure to protect your information while enabling helpful group sharing features. Your data belongs to you, and you control who can access it.We have no way to identify you or any of your data since your mobile number is stored in encrypted format.</p>
+        <p>Careguide prioritizes your privacy and data security. We use Firebase's secure infrastructure to protect your health information while enabling helpful group sharing features. Your data belongs to you, and you control who can access it.</p>
     </div>
 
     <div class="footer">
